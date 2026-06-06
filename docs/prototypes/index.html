@@ -49,7 +49,7 @@ body {
 .prototype-shell {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 16px 24px;
 }
 
 /* ============================================================
@@ -127,25 +127,23 @@ body {
 .feat-dot.done { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
 .feat-dot.todo { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 
-/* tooltip */
-.feat-dot::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+/* tooltip — rendered via JS with position:fixed to avoid overflow clipping */
+#feat-tooltip {
+  position: fixed;
   background: #1e293b;
   color: #fff;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 5px 10px;
+  border-radius: 5px;
   font-size: 11px;
   font-weight: 400;
   white-space: nowrap;
-  opacity: 0;
   pointer-events: none;
-  transition: opacity .15s;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity .12s;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
 }
-.feat-dot:hover::after { opacity: 1; }
+#feat-tooltip.show { opacity: 1; }
 
 /* ============================================================
    Page 1: 项目列表页
@@ -154,7 +152,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 .page-header h1 {
   font-size: 24px;
@@ -192,14 +190,14 @@ body {
 /* Project cards grid */
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
 }
 .project-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: 20px;
+  padding: 16px;
   cursor: pointer;
   transition: var(--transition);
   box-shadow: var(--shadow-sm);
@@ -285,7 +283,7 @@ body {
 /* Empty state */
 .empty-state {
   text-align: center;
-  padding: 64px 24px;
+  padding: 48px 24px;
 }
 .empty-state .icon { font-size: 56px; margin-bottom: 16px; }
 .empty-state h3 {
@@ -307,13 +305,13 @@ body {
    Page 2: 上传页
    ============================================================ */
 .upload-page {
-  max-width: 560px;
+  max-width: 720px;
   margin: 0 auto;
 }
 .drop-zone {
   border: 2px dashed var(--color-border);
   border-radius: var(--radius-lg);
-  padding: 64px 24px;
+  padding: 48px 24px;
   text-align: center;
   cursor: pointer;
   transition: var(--transition);
@@ -337,6 +335,24 @@ body {
   border: 1px solid var(--color-border);
 }
 .upload-hint strong { color: var(--color-text); }
+
+.upload-info-row {
+  display: flex;
+  gap: 14px;
+  margin-top: 20px;
+}
+.upload-info-card {
+  flex: 1;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+.upload-info-card .info-icon { font-size: 28px; margin-bottom: 6px; }
+.upload-info-card .info-title { font-size: 14px; font-weight: 700; color: var(--color-text); margin-bottom: 4px; }
+.upload-info-card .info-desc { font-size: 12px; color: var(--color-text-dim); line-height: 1.6; }
 
 /* upload progress */
 .upload-progress {
@@ -383,12 +399,12 @@ body {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: 14px 20px;
-  margin-bottom: 20px;
+  padding: 10px 16px;
+  margin-bottom: 14px;
   box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 .detail-topbar .back-btn {
@@ -463,20 +479,20 @@ body {
 /* Two column layout */
 .two-col {
   display: flex;
-  gap: 20px;
+  gap: 16px;
   align-items: flex-start;
 }
 
 /* Left column: chapter list */
 .chapter-panel {
-  width: 260px;
+  width: 300px;
   flex-shrink: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
-  max-height: calc(100vh - 200px);
+  max-height: calc(100vh - 180px);
   display: flex;
   flex-direction: column;
 }
@@ -502,8 +518,8 @@ body {
 .chapter-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: 8px;
+  padding: 8px 16px;
   font-size: 13px;
   cursor: pointer;
   border: none;
@@ -532,12 +548,83 @@ body {
   0%, 100% { opacity: 1; }
   50%      { opacity: .4; }
 }
-.warn-icon { font-size: 13px; flex-shrink: 0; display: none; }
+.warn-icon { font-size: 13px; flex-shrink: 0; display: none; cursor: default; position: relative; }
 .warn-icon.show { display: inline; }
+
+/* F11 warning popover — always visible beside the ⚠️ icon */
+.warn-popover {
+  display: block;
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #fff;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 250px;
+  max-width: 300px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  z-index: 100;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #92400e;
+}
+.warn-popover .warn-pop-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.warn-popover .warn-pop-item {
+  padding: 2px 0 2px 14px;
+  position: relative;
+  font-size: 12px;
+  color: #a16207;
+}
+.warn-popover .warn-pop-item::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  color: #f59e0b;
+  font-weight: 700;
+}
+.warn-pop-f11 {
+  font-size: 9px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+/* Warning banner in script viewer */
+.warning-banner {
+  display: none;
+  margin: 16px 24px 0 24px;
+  padding: 12px 16px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.6;
+}
+.warning-banner.show { display: block; }
+.warning-banner .warn-title { font-weight: 700; margin-bottom: 4px; }
+.warning-banner .warn-item { padding: 2px 0 2px 16px; position: relative; }
+.warning-banner .warn-item::before { content: "•"; position: absolute; left: 4px; color: #f59e0b; }
 
 /* Character panel */
 .character-panel {
-  margin-top: 12px;
+  margin-top: 10px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -555,7 +642,7 @@ body {
   align-items: center;
   justify-content: space-between;
 }
-.character-list { max-height: 180px; overflow-y: auto; }
+.character-list { max-height: 360px; overflow-y: auto; }
 .character-row {
   padding: 8px 16px;
   font-size: 12px;
@@ -627,7 +714,7 @@ body {
 
 .script-content {
   padding: 24px;
-  max-height: calc(100vh - 280px);
+  max-height: calc(100vh - 240px);
   overflow-y: auto;
   font-family: "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
   font-size: 15px;
@@ -748,9 +835,14 @@ body {
 
 <!-- Prototype navigation banner -->
 <div class="proto-banner">
-  <div>
+  <div style="display:flex;align-items:center;gap:12px">
     <span class="label">原型</span>
     AI 小说转剧本工具 — 交互原型
+    <span style="font-size:10px;color:#94a3b8;display:flex;gap:8px;align-items:center">
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#dcfce7;display:inline-block"></span>已实现</span>
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#fef3c7;display:inline-block"></span>待实现</span>
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#f1f5f9;display:inline-block"></span>可选</span>
+    </span>
   </div>
   <div class="proto-nav" id="proto-nav">
     <button onclick="navigateTo('projects')" class="active" data-page="projects">🏠 项目列表</button>
@@ -850,7 +942,7 @@ body {
     <button class="back-link" onclick="navigateTo('projects')">← 返回项目列表</button>
 
     <div class="upload-page" style="position:relative">
-      <span class="feat-tag done" style="top:-16px;right:-16px">F1</span>
+      <span class="feat-tag done">F1</span>
 
       <div class="drop-zone" id="drop-zone"
            ondragover="event.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over')"
@@ -862,9 +954,22 @@ body {
         <p>支持 .txt / .epub 格式，最大 50MB</p>
       </div>
 
-      <div class="upload-hint">
-        <strong>💡 支持格式：</strong> UTF-8 / GBK 编码的中文小说 &nbsp;|&nbsp;
-        <strong>章节识别：</strong> 自动匹配「第X章」「Chapter X」「序章/楔子/尾声」
+      <div class="upload-info-row">
+        <div class="upload-info-card">
+          <div class="info-icon">📄</div>
+          <div class="info-title">支持格式</div>
+          <div class="info-desc">.txt / .epub<br>最大 50MB</div>
+        </div>
+        <div class="upload-info-card">
+          <div class="info-icon">🔤</div>
+          <div class="info-title">编码兼容</div>
+          <div class="info-desc">UTF-8 / GBK<br>自动检测编码</div>
+        </div>
+        <div class="upload-info-card">
+          <div class="info-icon">📑</div>
+          <div class="info-title">章节识别</div>
+          <div class="info-desc">「第X章」「Chapter X」<br>序章 / 楔子 / 尾声</div>
+        </div>
       </div>
 
       <div class="upload-progress" id="upload-progress">
@@ -911,35 +1016,37 @@ body {
       <button class="btn-adapt-all" onclick="adaptAll()" style="position:relative">
         ⚡ 一键改编全部 <span class="feat-dot done" data-tip="F5 · 已实现">F5</span>
       </button>
-      <span class="feat-tag done" style="top:-8px;right:80px">F2 引擎</span>
+      <span class="feat-tag done">F2 引擎</span>
     </div>
 
     <!-- Two column -->
     <div class="two-col">
 
       <!-- LEFT: Chapters + Characters -->
-      <div style="width:260px;flex-shrink:0">
+      <div style="width:300px;flex-shrink:0">
         <div class="chapter-panel">
           <div class="chapter-panel-header">
             章节列表 <span class="count">5 章</span>
           </div>
           <div class="chapter-list" id="chapter-list">
-            <button class="chapter-item active" onclick="selectChapter(this, 1)">
+            <button class="chapter-item active" onclick="selectChapter(this, 1)"
+                    data-warnings="场景数偏少（仅2场），可能遗漏场景切换|产出长度不足原文的30%，可能LLM未完整改编">
               <span class="status-dot completed"></span>
               <span class="ch-num">第1章</span>
               <span class="ch-title">陨落的天才</span>
-              <span class="warn-icon">⚠️</span>
+              <span class="warn-icon show">⚠️</span>
             </button>
             <button class="chapter-item" onclick="selectChapter(this, 2)">
               <span class="status-dot completed"></span>
               <span class="ch-num">第2章</span>
               <span class="ch-title">斗气大陆</span>
             </button>
-            <button class="chapter-item" onclick="selectChapter(this, 3)">
+            <button class="chapter-item" onclick="selectChapter(this, 3)"
+                    data-warnings="对话格式不规范：3处缺少「角色名：」前缀，疑似LLM将叙述与对白混淆">
               <span class="status-dot completed"></span>
               <span class="ch-num">第3章</span>
               <span class="ch-title">客人</span>
-              <span class="warn-icon show" style="position:relative">⚠️<span class="feat-dot opt" data-tip="F11 · 可选 · 质量检查警告">F11</span></span>
+              <span class="warn-icon show">⚠️</span>
             </button>
             <button class="chapter-item" onclick="selectChapter(this, 4)">
               <span class="status-dot completed"></span>
@@ -955,8 +1062,9 @@ body {
         </div>
 
         <!-- Character panel (F3) -->
-        <div class="character-panel" style="position:relative">
+        <div style="position:relative">
           <span class="feat-tag todo">F3</span>
+          <div class="character-panel">
           <div class="character-panel-header">
             🎭 角色档案 <span style="font-size:10px;color:var(--color-text-muted)">AI 自动提取</span>
           </div>
@@ -995,11 +1103,13 @@ body {
             </div>
           </div>
         </div>
+        </div>
       </div>
 
       <!-- RIGHT: Script Viewer -->
-      <div class="script-panel" id="script-panel" style="position:relative">
-        <span class="feat-tag done" style="top:-8px;right:-6px">F7 阅读器</span>
+      <div style="position:relative">
+        <span class="feat-tag done">F7 阅读器</span>
+        <div class="script-panel" id="script-panel">
         <div class="script-panel-header">
           <h3>第1章 · 陨落的天才</h3>
           <div style="display:flex;align-items:center;gap:10px">
@@ -1010,6 +1120,13 @@ body {
               改编本章
             </button>
           </div>
+        </div>
+
+        <!-- Warning banner (F11) -->
+        <div class="warning-banner" id="warning-banner">
+          <div class="warn-title">⚠️ 质量检查未通过</div>
+          <div class="warn-item" id="warn-reason-1"></div>
+          <div class="warn-item" id="warn-reason-2"></div>
         </div>
 
         <!-- Script content area -->
@@ -1043,6 +1160,7 @@ body {
           <div class="adapt-elapsed" id="adapt-elapsed">已用时间：0:12</div>
         </div>
       </div>
+      </div>
 
     </div>
   </div>
@@ -1064,6 +1182,9 @@ body {
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<!-- Feat-dot tooltip (position:fixed to avoid overflow clipping) -->
+<div id="feat-tooltip"></div>
+
 
 <!-- ============================================================
      Script
@@ -1079,6 +1200,15 @@ function navigateTo(page) {
   document.querySelectorAll('#proto-nav button').forEach(b => {
     b.classList.toggle('active', b.dataset.page === page);
   });
+
+  // Trigger initial chapter selection to show warning banner on entry
+  if (page === 'detail') {
+    const activeChapter = document.querySelector('#chapter-list .chapter-item.active');
+    if (activeChapter) {
+      const num = activeChapter.querySelector('.ch-num').textContent.replace('第','').replace('章','');
+      selectChapter(activeChapter, parseInt(num));
+    }
+  }
 
   window.scrollTo(0, 0);
 }
@@ -1128,7 +1258,23 @@ function switchStyle(style, btn) {
 function selectChapter(btn, num) {
   document.querySelectorAll('#chapter-list .chapter-item').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  // In real app would reload script content for the selected chapter
+
+  // Update script panel header title
+  const titleEl = btn.querySelector('.ch-title').textContent;
+  document.querySelector('.script-panel-header h3').textContent = '第' + num + '章 · ' + titleEl;
+
+  // F11: show/hide warning banner based on chapter warnings
+  const banner = document.getElementById('warning-banner');
+  const raw = btn.dataset.warnings;
+  if (raw) {
+    const items = raw.split('|');
+    document.getElementById('warn-reason-1').textContent = items[0] || '';
+    document.getElementById('warn-reason-2').textContent = items[1] || '';
+    banner.querySelector('.warn-title').textContent = '⚠️ 质量检查未通过（' + items.length + ' 项）';
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
 }
 
 // ── F5: Adapt all ────────────────────────────────────────────
@@ -1210,6 +1356,31 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
 }
+
+// ── Feat-dot tooltip (position:fixed, no clipping) ───────────
+(function(){
+  const tip = document.getElementById('feat-tooltip');
+  let active = null;
+  function show(e) {
+    const rect = e.target.getBoundingClientRect();
+    tip.textContent = e.target.dataset.tip;
+    tip.style.left = rect.left + rect.width/2 + 'px';
+    tip.style.top  = (rect.top - 10) + 'px';
+    tip.style.transform = 'translate(-50%, -100%)';
+    tip.classList.add('show');
+  }
+  function hide() { tip.classList.remove('show'); }
+  document.addEventListener('mouseover', function(e){
+    const dot = e.target.closest('.feat-dot');
+    if (!dot) return;
+    active = dot;
+    show(e);
+  }, true);
+  document.addEventListener('mouseout', function(e){
+    const dot = e.target.closest('.feat-dot');
+    if (dot === active) { active = null; hide(); }
+  }, true);
+})();
 
 // ── Init: show first page ────────────────────────────────────
 navigateTo('projects');
