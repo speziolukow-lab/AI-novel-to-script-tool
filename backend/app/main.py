@@ -41,12 +41,13 @@ app.add_middleware(
 )
 
 # --- Routers ---
-from app.api import upload, projects, chapters, export
+from app.api import upload, projects, chapters, export, demo
 
 app.include_router(upload.router, prefix="/api", tags=["Upload"])
 app.include_router(projects.router, prefix="/api", tags=["Projects"])
 app.include_router(chapters.router, prefix="/api", tags=["Chapters"])
 app.include_router(export.router, prefix="/api", tags=["Export"])
+app.include_router(demo.router, prefix="/api", tags=["Demo"])
 
 
 @app.get("/api/health")

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # File Storage
     UPLOAD_DIR: Path = Path("./data/uploads")
     OUTPUT_DIR: Path = Path("./data/outputs")
+    SAMPLE_DIR: Path = Path("./data/samples")
     MAX_UPLOAD_SIZE_MB: int = 50
 
     # AI / LLM
