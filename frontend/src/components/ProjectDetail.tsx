@@ -382,11 +382,12 @@ export function ProjectDetail({ projectId, onBack }: Props) {
         <div style={{ display: "flex", gap: "4px" }}>
           {(() => {
             const safeTitle = project.title.replace(/ /g, "_").replace(/\//g, "_").slice(0, 50);
+            const styleLabel = { film: "影视", comic: "漫画", stage: "舞台" }[project.style] || "剧本";
             return [
-              { label: ".md", url: exportMarkdownUrl(project.id), file: `${safeTitle}_剧本.md` },
-              { label: ".txt", url: exportTxtUrl(project.id), file: `${safeTitle}_剧本.txt` },
-              { label: ".docx", url: exportDocxUrl(project.id), file: `${safeTitle}_剧本.docx` },
-              { label: ".yaml", url: exportYamlUrl(project.id), file: `${safeTitle}_剧本.yaml` },
+              { label: ".md", url: exportMarkdownUrl(project.id), file: `${safeTitle}_${styleLabel}剧本.md` },
+              { label: ".txt", url: exportTxtUrl(project.id), file: `${safeTitle}_${styleLabel}剧本.txt` },
+              { label: ".docx", url: exportDocxUrl(project.id), file: `${safeTitle}_${styleLabel}剧本.docx` },
+              { label: ".yaml", url: exportYamlUrl(project.id), file: `${safeTitle}_${styleLabel}剧本.yaml` },
             ];
           })().map((fmt) => (
             <a

@@ -17,6 +17,8 @@ from app.models import Project, Chapter, Adaptation
 
 router = APIRouter()
 
+STYLE_LABELS = {"film": "影视", "comic": "漫画", "stage": "舞台"}
+
 
 def _make_content_disposition(filename: str) -> str:
     """Generate a properly encoded Content-Disposition attachment header value.
@@ -68,11 +70,12 @@ async def export_markdown(project_id: str, db: AsyncSession = Depends(get_db)):
 
     content = "\n".join(lines)
     safe_title = project.title.replace(" ", "_").replace("/", "_")[:50]
+    style_label = STYLE_LABELS.get(style, "剧本")
 
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8")),
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_剧本.md")},
+        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_{style_label}剧本.md")},
     )
 
 
@@ -109,11 +112,12 @@ async def export_txt(project_id: str, db: AsyncSession = Depends(get_db)):
 
     content = "\n".join(lines)
     safe_title = project.title.replace(" ", "_").replace("/", "_")[:50]
+    style_label = STYLE_LABELS.get(style, "剧本")
 
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8")),
         media_type="text/plain; charset=utf-8",
-        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_剧本.txt")},
+        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_{style_label}剧本.txt")},
     )
 
 
@@ -168,12 +172,13 @@ async def export_docx(project_id: str, db: AsyncSession = Depends(get_db)):
     buffer.seek(0)
 
     safe_title = project.title.replace(" ", "_").replace("/", "_")[:50]
+    style_label = STYLE_LABELS.get(style, "剧本")
 
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
-            "Content-Disposition": _make_content_disposition(f"{safe_title}_剧本.docx")
+            "Content-Disposition": _make_content_disposition(f"{safe_title}_{style_label}剧本.docx")
         },
     )
 
@@ -245,12 +250,13 @@ async def export_yaml(project_id: str, db: AsyncSession = Depends(get_db)):
     )
 
     safe_title = project.title.replace(" ", "_").replace("/", "_")[:50]
+    style_label = STYLE_LABELS.get(style, "剧本")
 
     return StreamingResponse(
         io.BytesIO(yaml_content.encode("utf-8")),
         media_type="application/x-yaml; charset=utf-8",
         headers={
-            "Content-Disposition": _make_content_disposition(f"{safe_title}_剧本.yaml")
+            "Content-Disposition": _make_content_disposition(f"{safe_title}_{style_label}剧本.yaml")
         },
     )
 
