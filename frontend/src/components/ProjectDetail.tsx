@@ -27,9 +27,7 @@ const ADAPT_STAGES = [
   "正在分析章节结构…",
   "正在提取出场人物…",
   "正在生成剧本…",
-  "🔧 正在生成章节摘要…",
-  "🔧 质量检查中…",
-  "✅ 改编完成！",
+  "AI 正在处理中…",
 ];
 
 // ── F11: Quality check ──
@@ -106,7 +104,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     }, 600);
   };
 
-  const stopProgress = () => { clearTimers(); setAdaptStage(ADAPT_STAGES.length - 1); };
+  const stopProgress = () => { clearTimers(); };
   useEffect(() => () => clearTimers(), []);
 
   const handleAdaptChapter = async (chapterId: string) => {
