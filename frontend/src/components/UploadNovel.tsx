@@ -4,6 +4,7 @@ import { useToast } from "./shared/Toast";
 
 interface Props {
   onSuccess: (projectId: string) => void;
+  onBack: () => void;
 }
 
 const UPLOAD_STAGES = [
@@ -14,7 +15,7 @@ const UPLOAD_STAGES = [
   "✅ 解析完成！正在跳转…",
 ];
 
-export function UploadNovel({ onSuccess }: Props) {
+export function UploadNovel({ onSuccess, onBack }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStage, setUploadStage] = useState(-1);
@@ -74,7 +75,7 @@ export function UploadNovel({ onSuccess }: Props) {
     <div>
       {/* Back link */}
       <button
-        onClick={() => window.history.back()}
+        onClick={() => onBack()}
         style={{
           display: "inline-flex", alignItems: "center", gap: "6px",
           color: "#64748b", fontSize: "14px", cursor: "pointer",

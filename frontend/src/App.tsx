@@ -155,7 +155,7 @@ function AppInner() {
           />
         )}
         {page === "upload" && (
-          <UploadNovel onSuccess={handleUploadSuccess} />
+          <UploadNovel onSuccess={handleUploadSuccess} onBack={() => setPage("projects")} />
         )}
         {page === "detail" && selectedProjectId && (
           <ProjectDetail
