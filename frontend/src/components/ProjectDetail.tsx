@@ -8,6 +8,10 @@ import {
   exportDocxUrl,
   exportTxtUrl,
   exportYamlUrl,
+  exportChapterMarkdownUrl,
+  exportChapterDocxUrl,
+  exportChapterTxtUrl,
+  exportChapterYamlUrl,
 } from "../api/client";
 import type { ProjectDetail as ProjectDetailType, ChapterInfo, AdaptationInfo } from "../api/client";
 import { ScriptViewer } from "./ScriptViewer";
@@ -384,10 +388,10 @@ export function ProjectDetail({ projectId, onBack }: Props) {
             const safeTitle = project.title.replace(/ /g, "_").replace(/\//g, "_").slice(0, 50);
             const styleLabel = { film: "影视", comic: "漫画", stage: "舞台" }[project.style] || "剧本";
             return [
-              { label: ".md", url: exportMarkdownUrl(project.id), file: `${safeTitle}_${styleLabel}剧本.md` },
-              { label: ".txt", url: exportTxtUrl(project.id), file: `${safeTitle}_${styleLabel}剧本.txt` },
-              { label: ".docx", url: exportDocxUrl(project.id), file: `${safeTitle}_${styleLabel}剧本.docx` },
-              { label: ".yaml", url: exportYamlUrl(project.id), file: `${safeTitle}_${styleLabel}剧本.yaml` },
+              { label: ".md", url: exportMarkdownUrl(project.id), file: `${safeTitle}_全本_${styleLabel}剧本.md` },
+              { label: ".txt", url: exportTxtUrl(project.id), file: `${safeTitle}_全本_${styleLabel}剧本.txt` },
+              { label: ".docx", url: exportDocxUrl(project.id), file: `${safeTitle}_全本_${styleLabel}剧本.docx` },
+              { label: ".yaml", url: exportYamlUrl(project.id), file: `${safeTitle}_全本_${styleLabel}剧本.yaml` },
             ];
           })().map((fmt) => (
             <a
@@ -518,6 +522,37 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                     >
                       改编本章
                     </button>
+                  )}
+                  {/* Per-chapter export */}
+                  {activeAdaptation.status === "completed" && (
+                    <div style={{ display: "flex", gap: "3px", marginLeft: "4px" }}>
+                      {(() => {
+                        const safeTitle = project.title.replace(/ /g, "_").replace(/\//g, "_").slice(0, 50);
+                        const styleLabel = { film: "影视", comic: "漫画", stage: "舞台" }[project.style] || "剧本";
+                        const chNum = activeChapter.chapter_num;
+                        return [
+                          { label: ".md", url: exportChapterMarkdownUrl(activeChapter.id), file: `${safeTitle}_第${chNum}章_${styleLabel}剧本.md` },
+                          { label: ".txt", url: exportChapterTxtUrl(activeChapter.id), file: `${safeTitle}_第${chNum}章_${styleLabel}剧本.txt` },
+                          { label: ".docx", url: exportChapterDocxUrl(activeChapter.id), file: `${safeTitle}_第${chNum}章_${styleLabel}剧本.docx` },
+                          { label: ".yaml", url: exportChapterYamlUrl(activeChapter.id), file: `${safeTitle}_第${chNum}章_${styleLabel}剧本.yaml` },
+                        ];
+                      })().map((fmt) => (
+                        <a
+                          key={fmt.label}
+                          href={fmt.url}
+                          download={fmt.file}
+                          title={`导出第${activeChapter.chapter_num}章`}
+                          style={{
+                            padding: "4px 7px", borderRadius: "4px",
+                            fontSize: "11px", fontWeight: 600, textDecoration: "none",
+                            background: "#f8fafc", color: "#475569",
+                            border: "1px solid #e2e8f0",
+                          }}
+                        >
+                          {fmt.label}
+                        </a>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>

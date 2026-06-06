@@ -141,6 +141,24 @@ export function exportYamlUrl(projectId: string): string {
   return `${BASE}/projects/${projectId}/export/yaml`;
 }
 
+// ── Per-chapter export ────────────────────────────────────────────
+
+export function exportChapterMarkdownUrl(chapterId: string): string {
+  return `${BASE}/chapters/${chapterId}/export/markdown`;
+}
+
+export function exportChapterDocxUrl(chapterId: string): string {
+  return `${BASE}/chapters/${chapterId}/export/docx`;
+}
+
+export function exportChapterTxtUrl(chapterId: string): string {
+  return `${BASE}/chapters/${chapterId}/export/txt`;
+}
+
+export function exportChapterYamlUrl(chapterId: string): string {
+  return `${BASE}/chapters/${chapterId}/export/yaml`;
+}
+
 export async function loadDemo(): Promise<UploadResult> {
   const res = await fetch(`${BASE}/demo`, { method: "POST" });
   if (!res.ok) {

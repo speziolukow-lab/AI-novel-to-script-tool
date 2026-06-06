@@ -69,13 +69,13 @@ async def export_markdown(project_id: str, db: AsyncSession = Depends(get_db)):
         lines.append("\n---\n")
 
     content = "\n".join(lines)
-    safe_title = project.title.replace(" ", "_").replace("/", "_")[:50]
+    safe_title = _safe_title(project.title)
     style_label = STYLE_LABELS.get(style, "剧本")
 
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8")),
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_{style_label}剧本.md")},
+        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_全本_{style_label}剧本.md")},
     )
 
 
@@ -111,13 +111,13 @@ async def export_txt(project_id: str, db: AsyncSession = Depends(get_db)):
         lines.append("")
 
     content = "\n".join(lines)
-    safe_title = project.title.replace(" ", "_").replace("/", "_")[:50]
+    safe_title = _safe_title(project.title)
     style_label = STYLE_LABELS.get(style, "剧本")
 
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8")),
         media_type="text/plain; charset=utf-8",
-        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_{style_label}剧本.txt")},
+        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_全本_{style_label}剧本.txt")},
     )
 
 
@@ -171,14 +171,14 @@ async def export_docx(project_id: str, db: AsyncSession = Depends(get_db)):
     doc.save(buffer)
     buffer.seek(0)
 
-    safe_title = project.title.replace(" ", "_").replace("/", "_")[:50]
+    safe_title = _safe_title(project.title)
     style_label = STYLE_LABELS.get(style, "剧本")
 
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
-            "Content-Disposition": _make_content_disposition(f"{safe_title}_{style_label}剧本.docx")
+            "Content-Disposition": _make_content_disposition(f"{safe_title}_全本_{style_label}剧本.docx")
         },
     )
 
@@ -249,16 +249,192 @@ async def export_yaml(project_id: str, db: AsyncSession = Depends(get_db)):
         indent=2,
     )
 
-    safe_title = project.title.replace(" ", "_").replace("/", "_")[:50]
+    safe_title = _safe_title(project.title)
     style_label = STYLE_LABELS.get(style, "剧本")
 
     return StreamingResponse(
         io.BytesIO(yaml_content.encode("utf-8")),
         media_type="application/x-yaml; charset=utf-8",
         headers={
-            "Content-Disposition": _make_content_disposition(f"{safe_title}_{style_label}剧本.yaml")
+            "Content-Disposition": _make_content_disposition(f"{safe_title}_全本_{style_label}剧本.yaml")
         },
     )
+
+
+# ── Per-chapter export ────────────────────────────────────────────
+
+
+async def _load_chapter_with_project(db: AsyncSession, chapter_id: str):
+    """Load a chapter with its project preloaded. Returns (Chapter, Project)."""
+    result = await db.execute(
+        select(Chapter)
+        .where(Chapter.id == chapter_id)
+        .options(
+            selectinload(Chapter.project).selectinload(Project.chapters),
+            selectinload(Chapter.adaptations),
+        )
+    )
+    chapter = result.scalars().unique().first()
+    if not chapter:
+        raise HTTPException(status_code=404, detail="章节不存在")
+    return chapter, chapter.project
+
+
+@router.get("/chapters/{chapter_id}/export/markdown")
+async def export_chapter_markdown(chapter_id: str, db: AsyncSession = Depends(get_db)):
+    """Export a single chapter as Markdown."""
+    chapter, project = await _load_chapter_with_project(db, chapter_id)
+    style = project.style
+    safe_title = _safe_title(project.title)
+    style_label = STYLE_LABELS.get(style, "剧本")
+
+    script = _get_script_for_style(chapter, style)
+    lines = [
+        f"# {project.title}",
+        f"\n**原著作者**：{project.author or ''}",
+        f"\n**改编风格**：{style}",
+        f"\n---\n",
+        f"## 第{chapter.chapter_num}章 {chapter.title or ''}\n",
+        script or "（待改编...）",
+    ]
+    content = "\n".join(lines)
+    filename = f"{safe_title}_第{chapter.chapter_num}章_{style_label}剧本.md"
+
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": _make_content_disposition(filename)},
+    )
+
+
+@router.get("/chapters/{chapter_id}/export/txt")
+async def export_chapter_txt(chapter_id: str, db: AsyncSession = Depends(get_db)):
+    """Export a single chapter as plain text."""
+    chapter, project = await _load_chapter_with_project(db, chapter_id)
+    style = project.style
+    safe_title = _safe_title(project.title)
+    style_label = STYLE_LABELS.get(style, "剧本")
+
+    script = _get_script_for_style(chapter, style)
+    lines = [
+        f"{project.title}",
+        f"原著：{project.author or ''}",
+        "=" * 50,
+        "",
+        f"【第{chapter.chapter_num}章】{chapter.title or ''}",
+        "-" * 40,
+        script or "（待改编...）",
+    ]
+    content = "\n".join(lines)
+    filename = f"{safe_title}_第{chapter.chapter_num}章_{style_label}剧本.txt"
+
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": _make_content_disposition(filename)},
+    )
+
+
+@router.get("/chapters/{chapter_id}/export/docx")
+async def export_chapter_docx(chapter_id: str, db: AsyncSession = Depends(get_db)):
+    """Export a single chapter as Word (.docx)."""
+    from docx import Document
+    from docx.shared import Pt, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    chapter, project = await _load_chapter_with_project(db, chapter_id)
+    style = project.style
+    safe_title = _safe_title(project.title)
+    style_label = STYLE_LABELS.get(style, "剧本")
+
+    doc = Document()
+    title_para = doc.add_heading(project.title, level=0)
+    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if project.author:
+        meta = doc.add_paragraph(f"原著作者：{project.author}")
+        meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph("")
+
+    doc.add_heading(f"第{chapter.chapter_num}章  {chapter.title or ''}", level=1)
+    script = _get_script_for_style(chapter, style)
+    if script:
+        for line in script.split("\n"):
+            doc.add_paragraph(line)
+    else:
+        doc.add_paragraph("（待改编...）")
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    filename = f"{safe_title}_第{chapter.chapter_num}章_{style_label}剧本.docx"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": _make_content_disposition(filename)},
+    )
+
+
+@router.get("/chapters/{chapter_id}/export/yaml")
+async def export_chapter_yaml(chapter_id: str, db: AsyncSession = Depends(get_db)):
+    """Export a single chapter as structured YAML."""
+    chapter, project = await _load_chapter_with_project(db, chapter_id)
+    style = project.style
+    safe_title = _safe_title(project.title)
+    style_label = STYLE_LABELS.get(style, "剧本")
+
+    adapt = _get_adaptation_for_style(chapter, style)
+    scenes = []
+    if adapt and adapt.scenes and adapt.scenes.get("structured_scenes"):
+        scenes = adapt.scenes["structured_scenes"]
+    else:
+        script = _get_script_for_style(chapter, style)
+        if script:
+            scenes = [{
+                "scene_num": 1,
+                "time": None,
+                "location": None,
+                "characters": [],
+                "stage_directions": [],
+                "dialogues": [],
+                "raw_prose": script,
+            }]
+
+    yaml_data = {
+        "project": {
+            "title": project.title,
+            "author": project.author or "",
+            "style": project.style,
+        },
+        "chapters": [{
+            "chapter_num": chapter.chapter_num,
+            "title": chapter.title or "",
+            "scenes": scenes,
+        }],
+    }
+
+    yaml_content = yaml.dump(
+        yaml_data,
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+        indent=2,
+    )
+    filename = f"{safe_title}_第{chapter.chapter_num}章_{style_label}剧本.yaml"
+
+    return StreamingResponse(
+        io.BytesIO(yaml_content.encode("utf-8")),
+        media_type="application/x-yaml; charset=utf-8",
+        headers={"Content-Disposition": _make_content_disposition(filename)},
+    )
+
+
+# ── Helpers ───────────────────────────────────────────────────────
+
+
+def _safe_title(title: str) -> str:
+    """Sanitize title for use in filenames."""
+    return title.replace(" ", "_").replace("/", "_")[:50]
 
 
 def _get_adaptation_for_style(chapter, style: str):
