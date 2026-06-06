@@ -262,7 +262,7 @@ class AIAdapter:
 
         client = AsyncOpenAI(
             api_key=settings.DEEPSEEK_API_KEY,
-            base_url="https://api.deepseek.com",
+            base_url="https://api.deepseek.com/v1",
         )
 
         response = await client.chat.completions.create(
@@ -273,6 +273,7 @@ class AIAdapter:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
+            extra_body={"thinking": {"type": "disabled"}},
         )
 
         return response.choices[0].message.content or ""
