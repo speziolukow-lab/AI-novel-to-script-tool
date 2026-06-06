@@ -334,20 +334,18 @@ PENDING → ADAPTING → COMPLETED
          │       ├─ extra_body={"thinking": {"type": "disabled"}}  ← 禁用 V4-Pro 思维链
          │       └─ 返回 LLM 生成的剧本文本
          │
-         ├─ 5. 拼接所有 chunk 的剧本 (用 \n\n 连接)
+         ├─ 5. AI 直接输出结构化 JSON（scenes + alignment）
+         │     ai_adapter.adapt_chapter_sync_with_alignment()
+         │       ├─ LLM 输出：{"scenes": [...], "alignment": [...]}
+         │       ├─ 解析 JSON → 提取 structured_scenes 和 alignment
+         │       └─ structured_scenes_to_prose() 生成散文文本供前端展示
          │
-         ├─ 6. 第二遍 AI 转换: 散文剧本 → 结构化场景
-         │     ai_adapter.adapt_prose_to_structured_sync(full_script)
-         │       ├─ 使用 DeepSeek 解析散文格式剧本
-         │       ├─ 提取场景号/时间/地点/人物/舞台指示/对白
-         │       └─ 返回结构化 JSON 数组 (structured_scenes)
+         ├─ 6. 更新 DB: chapter.script_text (散文展示), scenes.structured_scenes (结构化), status=COMPLETED
          │
-         ├─ 7. 更新 DB: chapter.script_text (散文格式), scenes.structured_scenes (结构化), status=COMPLETED
-         │
-         ├─ 8. 失败处理: logger.exception() 记录完整 traceback
+         ├─ 7. 失败处理: logger.exception() 记录完整 traceback
          │     └─ chapter.status=FAILED, chapter.error_message=str(e)
          │
-         └─ 9. 检查是否所有章节完成 → 更新 project.status
+         └─ 8. 检查是否所有章节完成 → 更新 project.status
          │
          ▼
 前端: 2-3 秒轮询 → 状态变化后刷新 → ScriptViewer 渲染 → Toast 通知

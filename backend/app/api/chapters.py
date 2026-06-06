@@ -259,6 +259,7 @@ async def _run_adaptation(
                 # Adapt each chunk with alignment
                 script_parts: list[str] = []
                 all_alignment: list[dict] = []
+                all_structured_scenes: list[dict] = []
                 cumulative_scenes = 0
 
                 for i, chunk_info in enumerate(chunks):
@@ -269,36 +270,35 @@ async def _run_adaptation(
                         else script_parts[-1][-300:]
                     )
 
-                    cleaned, chunk_alignment = ai_adapter.adapt_chapter_sync_with_alignment(
-                        chapter_text=chunk_text,
-                        style=style,
-                        character_context=character_context,
-                        previous_scene_context=prev,
+                    chunk_prose, chunk_scenes, chunk_alignment = (
+                        ai_adapter.adapt_chapter_sync_with_alignment(
+                            chapter_text=chunk_text,
+                            style=style,
+                            character_context=character_context,
+                            previous_scene_context=prev,
+                        )
                     )
 
                     # Remap scene numbers: chunk-local → global
                     for entry in chunk_alignment:
                         entry["scene"] += cumulative_scenes
+                    for s in chunk_scenes:
+                        s["scene_num"] = s.get("scene_num", 0) + cumulative_scenes
 
                     if chunk_alignment:
-                        cumulative_scenes = max(e["scene"] for e in chunk_alignment)
+                        cumulative_scenes = max(
+                            e["scene"] for e in chunk_alignment
+                        )
+                    elif chunk_scenes:
+                        cumulative_scenes = max(
+                            s.get("scene_num", 0) for s in chunk_scenes
+                        )
 
                     all_alignment.extend(chunk_alignment)
-                    script_parts.append(cleaned)
+                    all_structured_scenes.extend(chunk_scenes)
+                    script_parts.append(chunk_prose)
 
                 full_script = "\n\n".join(script_parts)
-
-                # ── Second pass: convert prose script → structured scenes ──
-                structured_scenes: list[dict] = []
-                try:
-                    structured_scenes = ai_adapter.adapt_prose_to_structured_sync(
-                        full_script
-                    )
-                except Exception:
-                    logger.exception(
-                        "Structured conversion failed for chapter %d",
-                        chapter.chapter_num,
-                    )
 
                 # Update adaptation record
                 adaptation.script_text = full_script
@@ -306,7 +306,7 @@ async def _run_adaptation(
                     "alignment": all_alignment,
                     "total_paras": total_paras,
                     "version": 2,
-                    "structured_scenes": structured_scenes,
+                    "structured_scenes": all_structured_scenes,
                 }
                 if chapter_characters:
                     adaptation.characters_in_chapter = chapter_characters

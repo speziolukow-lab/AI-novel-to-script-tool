@@ -1,16 +1,20 @@
 """
 AI Adapter — core engine for novel-to-script adaptation.
 
-Uses Claude API (or other LLMs) to transform novel prose into formatted scripts.
+Uses Claude API (or other LLMs) to transform novel prose into structured
+scene JSON, then renders display-format prose text from that JSON.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import TypedDict
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class SceneInfo(TypedDict):
@@ -22,31 +26,60 @@ class SceneInfo(TypedDict):
     dialogues: list[dict]  # [{"character": "XX", "line": "..."}]
 
 
-# ── Prompt Templates ──────────────────────────────────────────
+# ── Prompt Templates (JSON output) ─────────────────────────────
+
+# Shared alignment instructions embedded in each style prompt.
+_ALIGNMENT_JSON_INSTRUCTION = """
+## 原著段落对应（alignment）
+原著每个自然段前标注了 `[¶数字]`（如 `[¶0]`、`[¶1]`）。
+在输出 JSON 的 `alignment` 数组中，为每个场景标注其改编自的段落范围：
+- `scene`：场景编号（与 scenes[].scene_num 一致）
+- `para_start`：起始段落编号
+- `para_end`：结束段落编号（包含）
+确保段落到场景的映射覆盖所有已改编的原著段落，不遗漏。"""
 
 SYSTEM_PROMPT_FILM = """你是一位资深的影视编剧，擅长将小说改编为剧本格式。
 
 ## 改编规则：
 1. **保留原著核心情节**：不要删减重要情节和人物对话
-2. **叙述转舞台指示**：将环境描写、动作描写、心理描写转换为【舞台指示】（用【】标注）
+2. **叙述转舞台指示**：将环境描写、动作描写、心理描写转换为舞台指示
 3. **对白精炼**：保留人物原话，可适当精炼但不改变原意，语气、个性要保留
 4. **场景拆分**：每次场景切换（时间/地点变化）都拆分为新的一场
-5. **格式要求**：严格按照以下格式输出
+5. **JSON 输出**：严格按照以下 JSON 格式输出
 
-## 输出格式：
+## 输出格式（JSON）：
+返回一个 JSON 对象，包含 `scenes` 和 `alignment` 两个字段：
 
-第 [场景序号] 场
-时间：[时间]
-地点：[地点]
-人物：[用顿号分隔的人物列表]
-【舞台指示：环境、动作、心理描写等】
-角色A：（对白内容）
-角色B：（对白内容）
+```json
+{
+  "scenes": [
+    {
+      "scene_num": 1,
+      "time": "黄昏",
+      "location": "城主府大厅",
+      "characters": ["张三", "李四"],
+      "stage_directions": ["大厅内烛火摇曳，窗外雨声淅沥"],
+      "dialogues": [
+        {"character": "张三", "line": "你来了。", "parenthetical": "冷冷地"},
+        {"character": "李四", "line": "我一直在等你。", "parenthetical": null}
+      ]
+    }
+  ],
+  "alignment": [
+    {"scene": 1, "para_start": 0, "para_end": 3}
+  ]
+}
+```
 
----
+## 字段说明
+- `scene_num`：整数，场景序号，从 1 开始递增
+- `time`：时间描述（如"黄昏"、"深夜"），未知填 null
+- `location`：地点描述，未知填 null
+- `characters`：出场人物姓名数组（顿号分隔的拆分为数组元素）
+- `stage_directions`：舞台指示数组，每条为一段环境/动作/心理描写（不含【】符号）
+- `dialogues`：对白数组，`parenthetical` 为角色名后括号内的表演指示，无可为 null""" + _ALIGNMENT_JSON_INSTRUCTION + """
 
-请将以下小说片段改编为剧本。"""
-
+只返回 JSON，不要其他内容。"""
 
 SYSTEM_PROMPT_COMIC = """你是一位专业的漫画分镜师和编剧，擅长将小说改编为漫画分镜剧本。
 
@@ -54,20 +87,39 @@ SYSTEM_PROMPT_COMIC = """你是一位专业的漫画分镜师和编剧，擅长�
 1. **视觉化呈现**：将所有叙述转换为可视化的画面描述
 2. **分格设计**：为每个重要画面标注分格
 3. **对话气泡**：对白改为适合漫画的简短对话
-4. **画面说明**：用[画面]标注场景视觉描述
+4. **画面说明**：用画面描述标注场景视觉内容
 5. **节奏感**：控制每页的信息量，保持阅读节奏
+6. **JSON 输出**：严格按照以下 JSON 格式输出
 
-## 输出格式：
+## 输出格式（JSON）：
+返回一个 JSON 对象，包含 `scenes` 和 `alignment` 两个字段：
 
-第 [场景序号] 场 - [地点]
-[画面：全景/中景/特写，描述画面内容]
-角色A：对话内容
-[画面：动作/表情描述]
-角色B：对话内容
----
+```json
+{
+  "scenes": [
+    {
+      "scene_num": 1,
+      "time": null,
+      "location": "城主府大厅",
+      "characters": ["张三", "李四"],
+      "stage_directions": ["全景：大厅内烛火摇曳", "特写：张三紧握的拳头"],
+      "dialogues": [
+        {"character": "张三", "line": "你来了。", "parenthetical": "冷冷地"},
+        {"character": "李四", "line": "我一直在等你。", "parenthetical": null}
+      ]
+    }
+  ],
+  "alignment": [
+    {"scene": 1, "para_start": 0, "para_end": 3}
+  ]
+}
+```
 
-请将以下小说片段改编为漫画分镜剧本。"""
+## 字段说明
+- `stage_directions`：画面描述数组，每条格式为"[景别]：画面描述"（如"全景：..."、"特写：..."）
+- `dialogues`：对话气泡内容，`parenthetical` 为角色名后括号内的表演指示，无可为 null""" + _ALIGNMENT_JSON_INSTRUCTION + """
 
+只返回 JSON，不要其他内容。"""
 
 SYSTEM_PROMPT_STAGE = """你是一位舞台剧编剧，擅长将小说改编为舞台剧剧本。
 
@@ -75,57 +127,44 @@ SYSTEM_PROMPT_STAGE = """你是一位舞台剧编剧，擅长将小说改编为�
 1. **舞台空间**：考虑舞台空间限制，合理设计场景
 2. **戏剧冲突**：强化戏剧张力和人物冲突
 3. **台词节奏**：台词要有舞台感和韵律感
-4. **动作指示**：用[左]和[右]标注演员走位
+4. **动作指示**：标注演员走位和动作
+5. **JSON 输出**：严格按照以下 JSON 格式输出
 
-## 输出格式：
+## 输出格式（JSON）：
+返回一个 JSON 对象，包含 `scenes` 和 `alignment` 两个字段：
 
-第一幕 第[场景序号]场
-场景：[地点描述]
-出场人物：[人物列表]
+```json
+{
+  "scenes": [
+    {
+      "scene_num": 1,
+      "time": null,
+      "location": "城主府大厅",
+      "characters": ["张三", "李四"],
+      "stage_directions": ["张三从左门入，缓步走向舞台中央", "李四从右侧暗处现身"],
+      "dialogues": [
+        {"character": "张三", "line": "你来了。", "parenthetical": "低沉地"},
+        {"character": "李四", "line": "我一直在等你。", "parenthetical": null}
+      ]
+    }
+  ],
+  "alignment": [
+    {"scene": 1, "para_start": 0, "para_end": 3}
+  ]
+}
+```
 
-角色A：（台词）
-[动作指示]
-角色B：（台词）
+## 字段说明
+- `stage_directions`：舞台动作/走位指示数组（如"[左]张三入场"、"灯光渐暗"）
+- `dialogues`：台词数组，`parenthetical` 为角色名后括号内的表演指示，无可为 null""" + _ALIGNMENT_JSON_INSTRUCTION + """
 
----
-
-请将以下小说片段改编为舞台剧剧本。"""
-
+只返回 JSON，不要其他内容。"""
 
 STYLE_PROMPTS = {
     "film": SYSTEM_PROMPT_FILM,
     "comic": SYSTEM_PROMPT_COMIC,
     "stage": SYSTEM_PROMPT_STAGE,
 }
-
-# ── Alignment Instruction ──────────────────────────────────────
-
-ALIGNMENT_INSTRUCTION = """
-## 原著段落对应
-
-原著的每个自然段前面都标注了 `[¶数字]` 格式的编号（如 `[¶0]`、`[¶1]`），表示段落编号。
-
-剧本输出完成后，**另起一行**，按以下格式输出改编对应关系：
-
-¶ALIGN¶
-S1:0-3
-S2:4-7
-S3:8-15
-¶ENDALIGN¶
-
-格式说明：
-- `S{场次}` 是你输出的剧本场次编号（第1场对应S1、第2场对应S2...）
-- `:{起始段落}-{结束段落}` 表示该场改编自原著哪些段落
-- 段落编号与原文中的 `[¶数字]` 完全对应
-- 每个场次单独一行，必须按照 `S{场次}:{起始}-{结束}` 格式
-- 确保覆盖所有已改编的原著段落，段落范围不要遗漏
-"""
-
-
-def _make_system_prompt_with_alignment(style: str) -> str:
-    """Return the system prompt for a style with alignment instruction appended."""
-    base = STYLE_PROMPTS.get(style, SYSTEM_PROMPT_FILM)
-    return base + ALIGNMENT_INSTRUCTION
 
 
 # ── Character Extraction Prompt ────────────────────────────────
@@ -150,47 +189,84 @@ CHARACTER_EXTRACTION_PROMPT = """请从以下小说片段中提取所有出场�
 只返回 JSON，不要其他内容。"""
 
 
-# ── Structured Script (Prose → YAML) Prompt ───────────────────
+# ── Prose Renderer ─────────────────────────────────────────────
 
-STRUCTURED_SCRIPT_PROMPT = """你是一位专业的剧本格式转换专家，负责将散文格式的剧本转换为结构化的 JSON 数据。
+def structured_scenes_to_prose(scenes: list[dict], style: str = "film") -> str:
+    """
+    Convert structured scene dicts back to prose-format script text
+    for frontend display and legacy exports.
 
-## 任务
-将下面散文格式的剧本转换为结构化的 JSON 数组。每个场景是一个对象。
+    Args:
+        scenes: List of scene dicts with scene_num, time, location,
+                characters, stage_directions, dialogues.
+        style: "film" | "comic" | "stage"
 
-## 散文格式说明
-散文剧本的格式为：
-- `第 N 场` 标记场景开始
-- `时间：...` / `地点：...` / `人物：...` 为场景元数据
-- `【...】` 为舞台指示
-- `角色名：（对白内容）` 为对白，角色名后括号内为演员指示
+    Returns:
+        Prose-format script text matching the original display format.
+    """
+    if not scenes:
+        return ""
 
-## 输出格式
-请以 JSON 数组返回，每个元素代表一个场景：
+    parts: list[str] = []
+    for scene in scenes:
+        lines: list[str] = []
+        sn = scene.get("scene_num", 0)
+        time_val = scene.get("time") or ""
+        location = scene.get("location") or ""
+        characters = scene.get("characters") or []
+        stage_dirs = scene.get("stage_directions") or []
+        dialogues = scene.get("dialogues") or []
 
-```json
-[
-  {
-    "scene_num": 1,
-    "time": "黄昏",
-    "location": "城主府大厅",
-    "characters": ["张三", "李四"],
-    "stage_directions": ["大厅内烛火摇曳，窗外雨声淅沥"],
-    "dialogues": [
-      {"character": "张三", "line": "你来了。", "parenthetical": "冷冷地"},
-      {"character": "李四", "line": "我一直在等你。", "parenthetical": null}
-    ]
-  }
-]
-```
+        if style == "film":
+            lines.append(f"第 {sn} 场")
+            if time_val:
+                lines.append(f"时间：{time_val}")
+            if location:
+                lines.append(f"地点：{location}")
+            if characters:
+                lines.append(f"人物：{'、'.join(characters)}")
+            for sd in stage_dirs:
+                lines.append(f"【{sd}】")
+            for d in dialogues:
+                char = d.get("character", "")
+                line = d.get("line", "")
+                paren = d.get("parenthetical")
+                if paren:
+                    lines.append(f"{char}：（{paren}）{line}")
+                else:
+                    lines.append(f"{char}：{line}")
 
-## 规则
-1. 从 `第 N 场` 提取 scene_num（整数）
-2. 从 `时间：` / `地点：` / `人物：` 行提取元数据（去掉标签前缀，只保留值）
-3. 从 `【...】` 提取舞台指示（去掉【】符号）
-4. 从 `角色名：（对白）` 提取对白；如果角色名后有（），提取为 parenthetical（去掉括号）
-5. 只返回 JSON，不要其他内容
-6. 确保每个场景的字段完整，缺失的字段用 null 或空数组填充
-7. 人物列表中的名字用顿号分隔的，拆分为数组"""
+        elif style == "comic":
+            loc_str = f" - {location}" if location else ""
+            lines.append(f"第 {sn} 场{loc_str}")
+            for sd in stage_dirs:
+                lines.append(f"[画面：{sd}]")
+            for d in dialogues:
+                char = d.get("character", "")
+                line = d.get("line", "")
+                lines.append(f"{char}：{line}")
+
+        elif style == "stage":
+            lines.append(f"第一幕 第{sn}场")
+            if location:
+                lines.append(f"场景：{location}")
+            if characters:
+                lines.append(f"出场人物：{'、'.join(characters)}")
+            for sd in stage_dirs:
+                lines.append(f"[{sd}]")
+            for d in dialogues:
+                char = d.get("character", "")
+                line = d.get("line", "")
+                paren = d.get("parenthetical")
+                if paren:
+                    lines.append(f"{char}：（{paren}）{line}")
+                else:
+                    lines.append(f"{char}：（{line}）")
+
+        parts.append("\n".join(lines))
+
+    return "\n\n---\n\n".join(parts)
+
 
 # ── AI Client Interface ────────────────────────────────────────
 
@@ -225,7 +301,6 @@ class AIAdapter:
         """
         system_prompt = STYLE_PROMPTS.get(style, SYSTEM_PROMPT_FILM)
 
-        # Build user message
         user_lines = []
         if character_context:
             user_lines.append(f"## 已知人物信息\n{character_context}\n")
@@ -264,7 +339,6 @@ class AIAdapter:
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
-        # Parse JSON from result
         return self._parse_character_json(result)
 
     def extract_characters_sync(self, chapter_text: str) -> list[dict]:
@@ -422,22 +496,29 @@ class AIAdapter:
         style: str = "film",
         character_context: str | None = None,
         previous_scene_context: str | None = None,
-    ) -> tuple[str, list[dict]]:
+    ) -> tuple[str, list[dict], list[dict]]:
         """
-        Synchronous adaptation with alignment data extraction.
+        Synchronous adaptation: novel text → structured JSON → prose text.
 
-        Uses the alignment-enhanced system prompt and parses the
-        alignment footer from the LLM response.
+        The AI prompt now instructs the LLM to output JSON with `scenes` and
+        `alignment` fields directly. The structured scenes are then rendered
+        to prose-format text for frontend display.
+
+        Args:
+            chapter_text: Raw novel chapter text with [¶N] paragraph markers.
+            style: One of "film", "comic", "stage".
+            character_context: Pre-extracted character info for consistency.
+            previous_scene_context: Previous chapter's last scene for continuity.
 
         Returns:
-            (cleaned_script_text, alignment_list)
-            alignment_list: [{"scene": 1, "para_start": 0, "para_end": 3}, ...]
+            (prose_text, structured_scenes, alignment_list)
+            - prose_text: Prose-format script for frontend display
+            - structured_scenes: List of structured scene dicts
+            - alignment_list: [{"scene": 1, "para_start": 0, "para_end": 3}, ...]
         """
         from openai import OpenAI
 
-        from app.services.text_utils import parse_alignment_footer
-
-        system_prompt = _make_system_prompt_with_alignment(style)
+        system_prompt = STYLE_PROMPTS.get(style, SYSTEM_PROMPT_FILM)
 
         user_lines = []
         if character_context:
@@ -464,64 +545,33 @@ class AIAdapter:
         )
 
         raw = response.choices[0].message.content or ""
-        return parse_alignment_footer(raw)
 
-    def adapt_prose_to_structured_sync(self, script_text: str) -> list[dict]:
-        """
-        Second-pass AI conversion: prose script text → structured scene dicts.
+        # Parse the JSON response
+        parsed = self._parse_adaptation_json(raw)
+        structured_scenes: list[dict] = parsed.get("scenes", [])
+        alignment: list[dict] = parsed.get("alignment", [])
 
-        Uses DeepSeek (via OpenAI-compatible API) to parse the prose-format
-        script into a JSON array of structured scene objects.
+        # Render prose text from structured scenes
+        prose_text = structured_scenes_to_prose(structured_scenes, style)
 
-        Args:
-            script_text: The prose-format script from the first AI pass.
+        return prose_text, structured_scenes, alignment
 
-        Returns:
-            List of structured scene dicts, each with:
-            scene_num, time, location, characters, stage_directions, dialogues.
-            Returns empty list on failure.
-        """
-        from openai import OpenAI
-
-        user_message = (
-            f"## 散文格式剧本\n\n{script_text}\n\n"
-            "请将以上散文格式剧本转换为结构化 JSON 数组。只返回 JSON，不要其他内容。"
-        )
-
-        try:
-            client = OpenAI(
-                api_key=settings.DEEPSEEK_API_KEY,
-                base_url="https://api.deepseek.com/v1",
-            )
-
-            response = client.chat.completions.create(
-                model=settings.DEEPSEEK_MODEL,
-                max_tokens=settings.LLM_MAX_TOKENS,
-                temperature=0.1,  # Low temperature for consistent structured output
-                messages=[
-                    {"role": "system", "content": STRUCTURED_SCRIPT_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-                extra_body={"thinking": {"type": "disabled"}},
-            )
-
-            result = response.choices[0].message.content or "[]"
-            return self._parse_structured_json(result)
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                "Structured script conversion failed"
-            )
-            return []
+    # ── JSON Parsing ──────────────────────────────────────────
 
     @staticmethod
-    def _parse_structured_json(text: str) -> list[dict]:
-        """Parse structured scene JSON from LLM response."""
-        # Try direct JSON parse first
+    def _parse_adaptation_json(text: str) -> dict:
+        """
+        Parse the LLM's JSON response containing `scenes` and `alignment`.
+
+        Handles common LLM output quirks: markdown code fences,
+        leading/trailing text, etc.
+        """
         text = text.strip()
+
+        # Try direct parse
         try:
             data = json.loads(text)
-            if isinstance(data, list):
+            if isinstance(data, dict) and "scenes" in data:
                 return data
         except json.JSONDecodeError:
             pass
@@ -531,30 +581,31 @@ class AIAdapter:
         if json_match:
             try:
                 data = json.loads(json_match.group(1).strip())
-                if isinstance(data, list):
+                if isinstance(data, dict) and "scenes" in data:
                     return data
             except json.JSONDecodeError:
                 pass
 
-        # Find outermost JSON array
+        # Find outermost JSON object
         try:
-            start = text.find("[")
-            end = text.rfind("]")
+            start = text.find("{")
+            end = text.rfind("}")
             if start != -1 and end != -1 and end > start:
                 data = json.loads(text[start:end + 1])
-                if isinstance(data, list):
+                if isinstance(data, dict) and "scenes" in data:
                     return data
         except json.JSONDecodeError:
             pass
 
-        return []
+        logger.warning("Failed to parse adaptation JSON, raw preview: %s",
+                        text[:200])
+        return {"scenes": [], "alignment": []}
 
     # ── Helpers ────────────────────────────────────────────────
 
     @staticmethod
     def _parse_character_json(text: str) -> list[dict]:
         """Parse JSON from LLM response, handling code-block wrapping."""
-        # Find JSON block
         json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
         if json_match:
             text = json_match.group(1).strip()
@@ -562,9 +613,7 @@ class AIAdapter:
             data = json.loads(text)
             return data.get("characters", [])
         except json.JSONDecodeError:
-            # Try to find a JSON-like structure
             try:
-                # Find outermost JSON object
                 start = text.find("{")
                 end = text.rfind("}")
                 if start != -1 and end != -1:

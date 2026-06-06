@@ -2,7 +2,7 @@
 
 ## 一、概述
 
-本文档定义 AI 小说转剧本工具输出的结构化剧本 YAML Schema。该 Schema 将散文格式的剧本（AI 第一轮输出）转换为结构化的 YAML 数据，便于程序化处理、版本管理、专业工具导入和二次编辑。
+本文档定义 AI 小说转剧本工具输出的结构化剧本 YAML Schema。该 Schema 是 AI 的主要输出格式——AI 直接生成结构化 JSON，后端再将其渲染为散文格式文本供前端展示。结构化数据便于程序化处理、版本管理、专业工具导入和二次编辑。
 
 ## 二、Schema 定义
 
@@ -183,7 +183,7 @@ for sd, d in zip_longest(scene["stage_directions"], scene["dialogues"]):
 
 ## 五、与散文格式的关系
 
-| 维度 | 散文格式（第一轮） | YAML 格式（第二轮） |
+| 维度 | 散文格式（渲染输出） | YAML 格式（AI 主输出） |
 |------|-------------------|-------------------|
 | 用途 | 前端展示、人工阅读 | 程序处理、专业工具导入 |
 | 结构 | 自由文本 + 约定格式标记 | 严格 Schema 定义 |
@@ -192,8 +192,8 @@ for sd, d in zip_longest(scene["stage_directions"], scene["dialogues"]):
 | 体积 | 较小（无元数据） | 较大（含完整元数据） |
 
 两种格式在系统中**共存**：
-- 散文格式保留在 `script_text` 字段，前端 ScriptViewer 继续用于展示和人工阅读
-- YAML 结构化数据存储在 `scenes.structured_scenes` 字段，用于结构化导出和程序化处理
+- AI 直接输出结构化 JSON，存储在 `scenes.structured_scenes` 字段，作为数据源
+- 后端通过 `structured_scenes_to_prose()` 将 JSON 渲染为散文格式，存入 `script_text`，前端 ScriptViewer 用于展示
 
 ## 六、扩展性设计
 
