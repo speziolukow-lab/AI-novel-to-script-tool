@@ -191,6 +191,9 @@ AI-novel-to-script-tool/
        │                      │ title: str?          │
        │                      │ original_text: text  │
        │                      │ script_text: text?   │  ← AI 生成
+       │                      │ chapter_summary: text?│  ← 本章摘要 (计划中)
+       │                      │ cumulative_summary:  │  ← 累积摘要 (计划中)
+       │                      │   text?              │
        │                      │ scenes: JSON?        │
        │                      │ characters: JSON?    │
        │                      │ status: enum         │  ← PENDING → ADAPTING → COMPLETED/FAILED
@@ -338,9 +341,105 @@ StreamingResponse (Content-Disposition: attachment)
 
 ---
 
-## 7. AI Prompt 设计
+## 7. 上下文管理与记忆设计
 
-### 7.1 电影剧本 (`SYSTEM_PROMPT_FILM`)
+### 7.1 现状：滑动窗口（仅短期记忆）
+
+当前改编流水线中，LLM 能获取的上下文仅有三个来源（[chapters.py:107-173](backend/app/api/chapters.py#L107-L173)）：
+
+| 来源 | 机制 | 范围 | 局限 |
+|------|------|------|------|
+| 角色上下文 | 从 `Project.characters` 读取 | 全项目 | **永远为空** — `extract_characters()` 从未被调用 |
+| 上一章末尾 | 上一章剧本最后 500 字符 | 仅前 1 章 | 非结构化文本，无法传递情节/状态信息 |
+| Chunk 重叠 | 长章切块时前 chunk 尾 300 字符 | 同一章内 | 仅解决切分断裂，不跨章 |
+
+**核心问题**：改编第 10 章时，LLM 不知道第 1-8 章发生了什么。角色状态变化（黑化、死亡、离开）无法跨章追踪。
+
+### 7.2 设计：摘要链 (Summary Chain)
+
+在改编流水线中增加 **摘要生成** 步骤，形成跨章记忆链：
+
+```
+Chapter 1 改编完成
+    │
+    ├─→ summarize_chapter(script) → Chapter1.chapter_summary
+    ├─→ Chapter1.cumulative_summary = chapter_summary
+    │
+    ▼
+Chapter 2 改编
+    ├─→ story_context = Chapter1.cumulative_summary  ← 作为"前情提要"传入
+    ├─→ 改编完成
+    ├─→ summarize_chapter(script, prev_summary) → 合并到累积摘要
+    ├─→ Chapter2.cumulative_summary = 第1-2章累积
+    │
+    ▼
+Chapter N 改编
+    ├─→ story_context = Chapter[N-1].cumulative_summary  ← 前 N-1 章全部信息
+    ├─→ 改编完成
+    └─→ ChapterN.cumulative_summary = 第1-N章累积
+```
+
+### 7.3 数据模型
+
+Chapter 表新增 2 个字段（[models.py](backend/app/models/models.py)）：
+
+```python
+class Chapter(Base):
+    # ... 现有字段 ...
+    chapter_summary: Mapped[Optional[str]]   # 本章摘要（单章独立）
+    cumulative_summary: Mapped[Optional[str]] # 累积摘要（第1章～本章）
+```
+
+### 7.4 摘要 Prompt 设计
+
+```json
+{
+  "new_characters": [
+    {"name": "姓名", "role": "身份", "first_appearance": "首次出场场景"}
+  ],
+  "character_state_changes": [
+    {"name": "姓名", "before": "之前状态", "after": "当前状态"}
+  ],
+  "key_events": ["事件1", "事件2"],
+  "unresolved_threads": ["悬念1"],
+  "scene_summary": "本章场景概述 (100字内)"
+}
+```
+
+### 7.5 LLM 上下文窗口拼接
+
+改编第 N 章时，传给 LLM 的完整 User Message 结构：
+
+```
+## 前情提要                          ← 新增：累积摘要
+第1-3章概要：角色A从京城出发前往边关，
+途中遇到角色B。当前未解决悬念：角色C的身份尚未揭晓。
+
+## 已知人物信息                      ← Phase 1 接入后生效
+- 角色A（坚毅果敢）：主角，青年剑客
+- 角色B（神秘冷漠）：配角，身份不明
+
+## 上一场结尾                        ← 原有：第 N-1 章末尾
+角色A推开客栈房门，里面空无一人。
+
+## 需要改编的小说片段                ← 原有：第 N 章文本
+...
+```
+
+### 7.6 与行业方案对比
+
+| 层级 | 行业方案 | 当前 Demo | 实现复杂度 |
+|------|----------|-----------|-----------|
+| 短期记忆 | 滑动窗口 | ✅ Chunk overlap | 已实现 |
+| 长期记忆 | 结构化摘要 + DB 持久化 | 🔧 摘要链 (本次新增) | 低 (~30min) |
+| 语义召回 | 向量数据库 (ChromaDB/Pinecone) | ❌ MVP 不做 | 中 (需额外基础设施) |
+| 知识图谱 | GraphRAG / E²RAG 双图 | ❌ MVP 不做 | 高 |
+
+---
+
+## 8. AI Prompt 设计
+
+### 8.1 电影剧本 (`SYSTEM_PROMPT_FILM`)
 
 AI 角色: **资深影视编剧**
 
@@ -362,7 +461,7 @@ AI 角色: **资深影视编剧**
 ---
 ```
 
-### 7.2 漫画分镜 (`SYSTEM_PROMPT_COMIC`)
+### 8.2 漫画分镜 (`SYSTEM_PROMPT_COMIC`)
 
 AI 角色: **漫画分镜师+编剧**
 
@@ -373,7 +472,7 @@ AI 角色: **漫画分镜师+编剧**
 4. `[画面：景别描述]` 替代舞台指示
 5. 控制每页信息量，保持阅读节奏
 
-### 7.3 舞台剧本 (`SYSTEM_PROMPT_STAGE`)
+### 8.3 舞台剧本 (`SYSTEM_PROMPT_STAGE`)
 
 AI 角色: **舞台剧编剧**
 
@@ -383,7 +482,7 @@ AI 角色: **舞台剧编剧**
 3. 台词有舞台感和韵律感
 4. `[左]/[右]` 标注演员走位
 
-### 7.4 角色提取 (`CHARACTER_EXTRACTION_PROMPT`)
+### 8.4 角色提取 (`CHARACTER_EXTRACTION_PROMPT`)
 
 要求 LLM 以 JSON 格式返回:
 ```json
@@ -402,9 +501,9 @@ AI 角色: **舞台剧编剧**
 
 ---
 
-## 8. 前端组件架构
+## 9. 前端组件架构
 
-### 8.1 导航状态机
+### 9.1 导航状态机
 
 ```
                     ┌──────────────┐
@@ -426,7 +525,7 @@ AI 角色: **舞台剧编剧**
         └──────────────────────────────────────┘
 ```
 
-### 8.2 ScriptViewer 语法高亮
+### 9.2 ScriptViewer 语法高亮
 
 | 规则 | 匹配 | 视觉 |
 |------|------|------|
@@ -439,7 +538,7 @@ AI 角色: **舞台剧编剧**
 
 ---
 
-## 9. 配置参数
+## 10. 配置参数
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -453,9 +552,9 @@ AI 角色: **舞台剧编剧**
 
 ---
 
-## 10. 技术特点 & 限制
+## 11. 技术特点 & 限制
 
-### 10.1 架构特点
+### 11.1 架构特点
 - **单体应用**: 前后端分离但部署在一起 (Vite proxy → FastAPI)
 - **无状态 API**: 无 Session，userId 固定为 "default"
 - **后台任务而非消息队列**: 改编任务通过 FastAPI BackgroundTasks 执行，非 Celery/Redis
@@ -463,7 +562,7 @@ AI 角色: **舞台剧编剧**
 - **单例 AIAdapter**: 全局共享同一个 provider 配置
 - **中文优先**: 所有 API 错误消息、UI 标签、提示词均为中文
 
-### 10.2 MVP 边界 (不做的事)
+### 11.2 MVP 边界 (不做的事)
 - ❌ 用户认证 & 多用户隔离
 - ❌ Multi-Agent 协作架构
 - ❌ RAG / 向量数据库 / 知识图谱
@@ -476,7 +575,7 @@ AI 角色: **舞台剧编剧**
 
 ---
 
-## 11. 快速启动
+## 12. 快速启动
 
 ### 后端
 ```bash
