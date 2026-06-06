@@ -64,14 +64,17 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   const adaptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
+  const initialLoadRef = useRef(true);
 
   const fetchProject = useCallback(async () => {
     try {
       const data = await getProject(projectId);
       setProject(data);
       if (data.style) setStyle(data.style);
-      if (!activeChapterId && data.chapters.length > 0) {
+      // Only auto-select the first chapter on initial load
+      if (initialLoadRef.current && data.chapters.length > 0) {
         setActiveChapterId(data.chapters[0].id);
+        initialLoadRef.current = false;
       }
       setError("");
     } catch {
