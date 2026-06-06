@@ -39,7 +39,13 @@ function checkQuality(adapt: AdaptationInfo): string[] {
   if (sceneCount > 0 && sceneCount < 3) {
     warnings.push(`场景数偏少（仅 ${sceneCount} 场），可能遗漏场景切换`);
   }
-  const dialogueLines = adapt.script_text.split("\n").filter((l) => /^\S+?[：:]/.test(l.trim()));
+  const dialogueLines = adapt.script_text.split("\n").filter((l) => {
+    const t = l.trim();
+    if (!/^\S+?[：:]/.test(t)) return false;
+    // Exclude structural markers (scene headers, panel numbers, etc.)
+    if (/^(第\s*\d+\s*[场格幕帧镜页]|[时地人]点[：:]|【|[-─-╿]{2,})/.test(t)) return false;
+    return true;
+  });
   const badlyFormatted = dialogueLines.filter((l) => !/^[^\s：:]{1,10}[：:]\s*\S/.test(l.trim()));
   if (badlyFormatted.length > 0) {
     warnings.push(`对话格式不规范：${badlyFormatted.length} 处缺少「角色名：」前缀，疑似 LLM 将叙述与对白混淆`);
