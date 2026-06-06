@@ -380,16 +380,19 @@ export function ProjectDetail({ projectId, onBack }: Props) {
 
         {/* F6: Export buttons */}
         <div style={{ display: "flex", gap: "4px" }}>
-          {[
-            { label: ".md", url: exportMarkdownUrl(project.id) },
-            { label: ".txt", url: exportTxtUrl(project.id) },
-            { label: ".docx", url: exportDocxUrl(project.id) },
-            { label: ".yaml", url: exportYamlUrl(project.id) },
-          ].map((fmt) => (
+          {(() => {
+            const safeTitle = project.title.replace(/ /g, "_").replace(/\//g, "_").slice(0, 50);
+            return [
+              { label: ".md", url: exportMarkdownUrl(project.id), file: `${safeTitle}_剧本.md` },
+              { label: ".txt", url: exportTxtUrl(project.id), file: `${safeTitle}_剧本.txt` },
+              { label: ".docx", url: exportDocxUrl(project.id), file: `${safeTitle}_剧本.docx` },
+              { label: ".yaml", url: exportYamlUrl(project.id), file: `${safeTitle}_剧本.yaml` },
+            ];
+          })().map((fmt) => (
             <a
               key={fmt.label}
               href={fmt.url}
-              download
+              download={fmt.file}
               style={{
                 padding: "7px 12px", borderRadius: "6px",
                 fontSize: "12px", fontWeight: 600, textDecoration: "none",

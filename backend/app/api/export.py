@@ -2,6 +2,7 @@
 
 import io
 from pathlib import Path
+from urllib.parse import quote
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +16,19 @@ from app.core.database import get_db
 from app.models import Project, Chapter, Adaptation
 
 router = APIRouter()
+
+
+def _make_content_disposition(filename: str) -> str:
+    """Generate a properly encoded Content-Disposition attachment header value.
+
+    Follows RFC 5987: uses filename* with UTF-8 percent-encoding for non-ASCII
+    characters, plus an ASCII-only filename fallback for legacy clients.
+    """
+    # ASCII fallback: strip non-ASCII chars
+    ascii_name = "".join(c if ord(c) < 128 and c.isprintable() else "_" for c in filename)
+    # RFC 5987: filename*=UTF-8''percent-encoded-utf8-bytes
+    encoded = quote(filename, safe="")
+    return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded}'
 
 
 @router.get("/projects/{project_id}/export/markdown")
@@ -58,7 +72,7 @@ async def export_markdown(project_id: str, db: AsyncSession = Depends(get_db)):
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8")),
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename={safe_title}_剧本.md"},
+        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_剧本.md")},
     )
 
 
@@ -99,7 +113,7 @@ async def export_txt(project_id: str, db: AsyncSession = Depends(get_db)):
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8")),
         media_type="text/plain; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename={safe_title}_剧本.txt"},
+        headers={"Content-Disposition": _make_content_disposition(f"{safe_title}_剧本.txt")},
     )
 
 
@@ -159,7 +173,7 @@ async def export_docx(project_id: str, db: AsyncSession = Depends(get_db)):
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
-            "Content-Disposition": f"attachment; filename={safe_title}_剧本.docx"
+            "Content-Disposition": _make_content_disposition(f"{safe_title}_剧本.docx")
         },
     )
 
@@ -236,7 +250,7 @@ async def export_yaml(project_id: str, db: AsyncSession = Depends(get_db)):
         io.BytesIO(yaml_content.encode("utf-8")),
         media_type="application/x-yaml; charset=utf-8",
         headers={
-            "Content-Disposition": f"attachment; filename={safe_title}_剧本.yaml"
+            "Content-Disposition": _make_content_disposition(f"{safe_title}_剧本.yaml")
         },
     )
 
