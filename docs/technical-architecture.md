@@ -336,12 +336,18 @@ PENDING → ADAPTING → COMPLETED
          │
          ├─ 5. 拼接所有 chunk 的剧本 (用 \n\n 连接)
          │
-         ├─ 6. 更新 DB: chapter.script_text, status=COMPLETED
+         ├─ 6. 第二遍 AI 转换: 散文剧本 → 结构化场景
+         │     ai_adapter.adapt_prose_to_structured_sync(full_script)
+         │       ├─ 使用 DeepSeek 解析散文格式剧本
+         │       ├─ 提取场景号/时间/地点/人物/舞台指示/对白
+         │       └─ 返回结构化 JSON 数组 (structured_scenes)
          │
-         ├─ 7. 失败处理: logger.exception() 记录完整 traceback
+         ├─ 7. 更新 DB: chapter.script_text (散文格式), scenes.structured_scenes (结构化), status=COMPLETED
+         │
+         ├─ 8. 失败处理: logger.exception() 记录完整 traceback
          │     └─ chapter.status=FAILED, chapter.error_message=str(e)
          │
-         └─ 8. 检查是否所有章节完成 → 更新 project.status
+         └─ 9. 检查是否所有章节完成 → 更新 project.status
          │
          ▼
 前端: 2-3 秒轮询 → 状态变化后刷新 → ScriptViewer 渲染 → Toast 通知
@@ -627,7 +633,6 @@ AI 角色: **舞台剧编剧**
 - ❌ FCPXML / EDL 专业导出
 - ❌ Docker / K8s 部署配置
 - ❌ 自动化测试
-- ❌ YAML Schema 输出
 - ❌ EPUB 正文提取 (已接受文件但解析为纯文本)
 - ❌ 暗色模式 / 移动端适配
 
@@ -642,6 +647,7 @@ AI 角色: **舞台剧编剧**
 - ✅ **Adaptation 表多风格独立存储** — 每章 × 每风格独立记录，切换风格不覆盖
 - ✅ **质量检查问题高亮** — 剧本视图中黄色左边框高亮问题行，点击警告项 scrollIntoView 定位
 - ✅ **AI 原文-剧本对齐映射** — LLM 改编时输出段落→场次对应关系，原文高亮精准定位到问题段落（替换旧启发式）
+- ✅ **YAML Schema 输出** — 两遍 AI 流水线：第一遍生成散文格式剧本（前端展示），第二遍转换为结构化 YAML（导出 + 程序化处理），详见 `docs/yaml-schema.md`
 
 ---
 

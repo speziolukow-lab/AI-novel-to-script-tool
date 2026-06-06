@@ -150,6 +150,48 @@ CHARACTER_EXTRACTION_PROMPT = """请从以下小说片段中提取所有出场�
 只返回 JSON，不要其他内容。"""
 
 
+# ── Structured Script (Prose → YAML) Prompt ───────────────────
+
+STRUCTURED_SCRIPT_PROMPT = """你是一位专业的剧本格式转换专家，负责将散文格式的剧本转换为结构化的 JSON 数据。
+
+## 任务
+将下面散文格式的剧本转换为结构化的 JSON 数组。每个场景是一个对象。
+
+## 散文格式说明
+散文剧本的格式为：
+- `第 N 场` 标记场景开始
+- `时间：...` / `地点：...` / `人物：...` 为场景元数据
+- `【...】` 为舞台指示
+- `角色名：（对白内容）` 为对白，角色名后括号内为演员指示
+
+## 输出格式
+请以 JSON 数组返回，每个元素代表一个场景：
+
+```json
+[
+  {
+    "scene_num": 1,
+    "time": "黄昏",
+    "location": "城主府大厅",
+    "characters": ["张三", "李四"],
+    "stage_directions": ["大厅内烛火摇曳，窗外雨声淅沥"],
+    "dialogues": [
+      {"character": "张三", "line": "你来了。", "parenthetical": "冷冷地"},
+      {"character": "李四", "line": "我一直在等你。", "parenthetical": null}
+    ]
+  }
+]
+```
+
+## 规则
+1. 从 `第 N 场` 提取 scene_num（整数）
+2. 从 `时间：` / `地点：` / `人物：` 行提取元数据（去掉标签前缀，只保留值）
+3. 从 `【...】` 提取舞台指示（去掉【】符号）
+4. 从 `角色名：（对白）` 提取对白；如果角色名后有（），提取为 parenthetical（去掉括号）
+5. 只返回 JSON，不要其他内容
+6. 确保每个场景的字段完整，缺失的字段用 null 或空数组填充
+7. 人物列表中的名字用顿号分隔的，拆分为数组"""
+
 # ── AI Client Interface ────────────────────────────────────────
 
 class AIAdapter:
@@ -423,6 +465,89 @@ class AIAdapter:
 
         raw = response.choices[0].message.content or ""
         return parse_alignment_footer(raw)
+
+    def adapt_prose_to_structured_sync(self, script_text: str) -> list[dict]:
+        """
+        Second-pass AI conversion: prose script text → structured scene dicts.
+
+        Uses DeepSeek (via OpenAI-compatible API) to parse the prose-format
+        script into a JSON array of structured scene objects.
+
+        Args:
+            script_text: The prose-format script from the first AI pass.
+
+        Returns:
+            List of structured scene dicts, each with:
+            scene_num, time, location, characters, stage_directions, dialogues.
+            Returns empty list on failure.
+        """
+        from openai import OpenAI
+
+        user_message = (
+            f"## 散文格式剧本\n\n{script_text}\n\n"
+            "请将以上散文格式剧本转换为结构化 JSON 数组。只返回 JSON，不要其他内容。"
+        )
+
+        try:
+            client = OpenAI(
+                api_key=settings.DEEPSEEK_API_KEY,
+                base_url="https://api.deepseek.com/v1",
+            )
+
+            response = client.chat.completions.create(
+                model=settings.DEEPSEEK_MODEL,
+                max_tokens=settings.LLM_MAX_TOKENS,
+                temperature=0.1,  # Low temperature for consistent structured output
+                messages=[
+                    {"role": "system", "content": STRUCTURED_SCRIPT_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                extra_body={"thinking": {"type": "disabled"}},
+            )
+
+            result = response.choices[0].message.content or "[]"
+            return self._parse_structured_json(result)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Structured script conversion failed"
+            )
+            return []
+
+    @staticmethod
+    def _parse_structured_json(text: str) -> list[dict]:
+        """Parse structured scene JSON from LLM response."""
+        # Try direct JSON parse first
+        text = text.strip()
+        try:
+            data = json.loads(text)
+            if isinstance(data, list):
+                return data
+        except json.JSONDecodeError:
+            pass
+
+        # Extract from code block
+        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+        if json_match:
+            try:
+                data = json.loads(json_match.group(1).strip())
+                if isinstance(data, list):
+                    return data
+            except json.JSONDecodeError:
+                pass
+
+        # Find outermost JSON array
+        try:
+            start = text.find("[")
+            end = text.rfind("]")
+            if start != -1 and end != -1 and end > start:
+                data = json.loads(text[start:end + 1])
+                if isinstance(data, list):
+                    return data
+        except json.JSONDecodeError:
+            pass
+
+        return []
 
     # ── Helpers ────────────────────────────────────────────────
 

@@ -137,6 +137,10 @@ export function exportTxtUrl(projectId: string): string {
   return `${BASE}/projects/${projectId}/export/txt`;
 }
 
+export function exportYamlUrl(projectId: string): string {
+  return `${BASE}/projects/${projectId}/export/yaml`;
+}
+
 export async function loadDemo(): Promise<UploadResult> {
   const res = await fetch(`${BASE}/demo`, { method: "POST" });
   if (!res.ok) {

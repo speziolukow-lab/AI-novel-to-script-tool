@@ -7,6 +7,7 @@ import {
   exportMarkdownUrl,
   exportDocxUrl,
   exportTxtUrl,
+  exportYamlUrl,
 } from "../api/client";
 import type { ProjectDetail as ProjectDetailType, ChapterInfo, AdaptationInfo } from "../api/client";
 import { ScriptViewer } from "./ScriptViewer";
@@ -383,6 +384,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
             { label: ".md", url: exportMarkdownUrl(project.id) },
             { label: ".txt", url: exportTxtUrl(project.id) },
             { label: ".docx", url: exportDocxUrl(project.id) },
+            { label: ".yaml", url: exportYamlUrl(project.id) },
           ].map((fmt) => (
             <a
               key={fmt.label}

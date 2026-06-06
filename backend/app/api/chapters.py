@@ -288,12 +288,25 @@ async def _run_adaptation(
 
                 full_script = "\n\n".join(script_parts)
 
+                # ── Second pass: convert prose script → structured scenes ──
+                structured_scenes: list[dict] = []
+                try:
+                    structured_scenes = ai_adapter.adapt_prose_to_structured_sync(
+                        full_script
+                    )
+                except Exception:
+                    logger.exception(
+                        "Structured conversion failed for chapter %d",
+                        chapter.chapter_num,
+                    )
+
                 # Update adaptation record
                 adaptation.script_text = full_script
                 adaptation.scenes = {
                     "alignment": all_alignment,
                     "total_paras": total_paras,
-                    "version": 1,
+                    "version": 2,
+                    "structured_scenes": structured_scenes,
                 }
                 if chapter_characters:
                     adaptation.characters_in_chapter = chapter_characters

@@ -3,6 +3,7 @@
 import io
 from pathlib import Path
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -161,6 +162,91 @@ async def export_docx(project_id: str, db: AsyncSession = Depends(get_db)):
             "Content-Disposition": f"attachment; filename={safe_title}_剧本.docx"
         },
     )
+
+
+@router.get("/projects/{project_id}/export/yaml")
+async def export_yaml(project_id: str, db: AsyncSession = Depends(get_db)):
+    """Export the full script as a structured YAML file."""
+    result = await db.execute(
+        select(Project)
+        .where(Project.id == project_id)
+        .options(
+            selectinload(Project.chapters).selectinload(Chapter.adaptations),
+        )
+    )
+    project = result.scalars().unique().first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    style = project.style
+
+    # Build YAML structure
+    chapters_data: list[dict] = []
+    for chapter in sorted(project.chapters, key=lambda c: c.chapter_num):
+        chapter_entry: dict = {
+            "chapter_num": chapter.chapter_num,
+            "title": chapter.title or "",
+            "scenes": [],
+        }
+
+        # Try structured scenes first, fall back to prose text
+        adapt = _get_adaptation_for_style(chapter, style)
+        if adapt and adapt.scenes and adapt.scenes.get("structured_scenes"):
+            chapter_entry["scenes"] = adapt.scenes["structured_scenes"]
+        else:
+            # Fallback: embed prose script as a single raw scene
+            script = _get_script_for_style(chapter, style)
+            if script:
+                chapter_entry["scenes"] = [
+                    {
+                        "scene_num": 1,
+                        "time": None,
+                        "location": None,
+                        "characters": [],
+                        "stage_directions": [],
+                        "dialogues": [],
+                        "raw_prose": script,
+                    }
+                ]
+
+        chapters_data.append(chapter_entry)
+
+    yaml_data = {
+        "project": {
+            "title": project.title,
+            "author": project.author or "",
+            "style": project.style,
+            "total_chapters": project.total_chapters,
+            "generated_at": project.updated_at.isoformat() if project.updated_at else "",
+        },
+        "chapters": chapters_data,
+    }
+
+    yaml_content = yaml.dump(
+        yaml_data,
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+        indent=2,
+    )
+
+    safe_title = project.title.replace(" ", "_").replace("/", "_")[:50]
+
+    return StreamingResponse(
+        io.BytesIO(yaml_content.encode("utf-8")),
+        media_type="application/x-yaml; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename={safe_title}_剧本.yaml"
+        },
+    )
+
+
+def _get_adaptation_for_style(chapter, style: str):
+    """Get the Adaptation ORM object for a specific style."""
+    for a in (chapter.adaptations or []):
+        if a.style == style:
+            return a
+    return None
 
 
 def _get_script_for_style(chapter, style: str) -> str | None:
