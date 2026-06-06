@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import {
   getProject,
   adaptChapter,
-  adaptAllChapters,
+  adaptBatchChapters,
   updateStyle,
   exportMarkdownUrl,
   exportDocxUrl,
@@ -97,6 +97,8 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   const [adaptElapsed, setAdaptElapsed] = useState(0);
   const [style, setStyle] = useState("film");
   const [viewMode, setViewMode] = useState<"original" | "script">("script");
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const adaptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
@@ -232,11 +234,15 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     }
   };
 
-  const handleAdaptAll = async () => {
+  const handleAdaptBatch = async () => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
     try {
-      setAdapting("__all__");
+      setAdapting("__batch__");
+      setBatchMode(false);
+      setSelectedIds(new Set());
       startProgress();
-      await adaptAllChapters(projectId);
+      await adaptBatchChapters(projectId, ids);
       const poll = setInterval(async () => {
         const p = await getProject(projectId);
         setProject(p);
@@ -245,7 +251,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
           setAdapting(null);
           stopProgress();
           fetchProject();
-          if (p.status === "completed") toast("✅ 全部章节改编完成！");
+          if (p.status === "completed") toast(`✅ ${ids.length} 个章节改编完成！`);
         }
       }, 2000);
     } catch {
@@ -253,6 +259,18 @@ export function ProjectDetail({ projectId, onBack }: Props) {
       setAdapting(null);
       stopProgress();
     }
+  };
+
+  const toggleChapterSelect = (chapterId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(chapterId)) {
+        next.delete(chapterId);
+      } else if (next.size < 5) {
+        next.add(chapterId);
+      }
+      return next;
+    });
   };
 
   const handleStyleChange = async (s: string) => {
@@ -412,15 +430,99 @@ export function ProjectDetail({ projectId, onBack }: Props) {
           ))}
         </div>
 
-        {/* F5: Adapt all */}
+        {/* F5: Batch adapt */}
         <button
           className="btn-adapt-all"
-          onClick={handleAdaptAll}
+          onClick={() => { setBatchMode(true); setSelectedIds(new Set()); }}
           disabled={adapting !== null || project.status === "adapting"}
         >
-          {adapting === "__all__" ? "⏳ 改编中..." : "⚡ 一键改编全部"}
+          {adapting === "__batch__" ? "⏳ 改编中..." : "📋 批量改编"}
         </button>
       </div>
+
+      {/* ── Batch selection modal ── */}
+      {batchMode && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          background: "rgba(0,0,0,0.35)", display: "flex",
+          alignItems: "center", justifyContent: "center",
+        }} onClick={() => setBatchMode(false)}>
+          <div style={{
+            background: "#fff", borderRadius: "12px", padding: "24px",
+            width: "420px", maxHeight: "70vh", overflow: "auto",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+          }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "16px" }}>
+              📋 批量改编（已选 {selectedIds.size}/5 章）
+            </h3>
+            <p style={{ margin: "0 0 16px 0", fontSize: "12px", color: "#94a3b8" }}>
+              选择需要改编的章节，一次最多 5 章
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "20px" }}>
+              {project.chapters.map((ch) => {
+                const adapt = getAdaptation(ch);
+                const isSelected = selectedIds.has(ch.id);
+                const isCompleted = adapt.status === "completed";
+                const isFull = !isSelected && selectedIds.size >= 5;
+                return (
+                  <label
+                    key={ch.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "10px",
+                      padding: "10px 12px", borderRadius: "8px",
+                      cursor: isCompleted || isFull ? "not-allowed" : "pointer",
+                      opacity: isCompleted ? 0.45 : 1,
+                      background: isSelected ? "#f0f9ff" : "#f8fafc",
+                      border: isSelected ? "2px solid #0ea5e9" : "1px solid #e2e8f0",
+                      transition: "120ms ease",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={isCompleted || isFull}
+                      onChange={() => toggleChapterSelect(ch.id)}
+                      style={{ accentColor: "#0ea5e9", width: "16px", height: "16px" }}
+                    />
+                    <span style={{ flex: 1, fontSize: "13px", fontWeight: 500 }}>
+                      第{ch.chapter_num}章 {ch.title}
+                    </span>
+                    {isCompleted && (
+                      <span style={{ fontSize: "11px", color: "#16a34a" }}>✅ 已完成</span>
+                    )}
+                    {adapt.status === "failed" && (
+                      <span style={{ fontSize: "11px", color: "#ef4444" }}>❌ 失败</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => { setBatchMode(false); setSelectedIds(new Set()); }}
+                style={{
+                  padding: "8px 20px", borderRadius: "8px", border: "1px solid #e2e8f0",
+                  background: "#fff", color: "#64748b", cursor: "pointer", fontSize: "13px",
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAdaptBatch}
+                disabled={selectedIds.size === 0}
+                style={{
+                  padding: "8px 20px", borderRadius: "8px", border: "none",
+                  background: selectedIds.size === 0 ? "#cbd5e1" : "#0ea5e9",
+                  color: "#fff", cursor: selectedIds.size === 0 ? "not-allowed" : "pointer",
+                  fontSize: "13px", fontWeight: 600,
+                }}
+              >
+                确认改编 {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div style={{

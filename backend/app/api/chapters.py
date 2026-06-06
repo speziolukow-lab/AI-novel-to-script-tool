@@ -79,12 +79,25 @@ async def adapt_chapter(
     }
 
 
-@router.post("/projects/{project_id}/adapt-all")
-async def adapt_all_chapters(
+from pydantic import BaseModel
+
+
+class AdaptBatchRequest(BaseModel):
+    chapter_ids: list[str]
+
+
+@router.post("/projects/{project_id}/adapt-batch")
+async def adapt_batch_chapters(
     project_id: str,
+    req: AdaptBatchRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Trigger adaptation for all chapters in a project."""
+    """Trigger adaptation for a selection of chapters (1-5 at a time)."""
+    if not req.chapter_ids or len(req.chapter_ids) < 1:
+        raise HTTPException(status_code=400, detail="请至少选择 1 个章节")
+    if len(req.chapter_ids) > 5:
+        raise HTTPException(status_code=400, detail="一次最多批量改编 5 个章节")
+
     result = await db.execute(
         select(Project)
         .where(Project.id == project_id)
@@ -97,24 +110,27 @@ async def adapt_all_chapters(
         raise HTTPException(status_code=404, detail="项目不存在")
 
     style = project.style
+    valid_ids = set(req.chapter_ids)
 
-    def _is_pending_for_style(c: Chapter) -> bool:
+    chapters_to_adapt: list[Chapter] = []
+    for c in project.chapters:
+        if c.id not in valid_ids:
+            continue
+        # Check if already completed for this style — skip those
         for a in (c.adaptations or []):
-            if a.style == style:
-                return a.status in (ChapterStatus.PENDING, ChapterStatus.FAILED)
-        return True  # no adaptation record → pending
+            if a.style == style and a.status == ChapterStatus.COMPLETED:
+                break
+        else:
+            chapters_to_adapt.append(c)
 
-    pending_chapters = [c for c in project.chapters if _is_pending_for_style(c)]
-
-    if not pending_chapters:
-        raise HTTPException(status_code=400, detail="没有待改编的章节")
+    if not chapters_to_adapt:
+        raise HTTPException(status_code=400, detail="所选章节均已完成改编，无需重复改编")
 
     project.status = ProjectStatus.ADAPTING
     await db.commit()
 
-    for chapter in pending_chapters:
+    for chapter in chapters_to_adapt:
         chapter.status = ChapterStatus.ADAPTING
-        # Upsert adaptation record
         for a in (chapter.adaptations or []):
             if a.style == style:
                 a.status = ChapterStatus.ADAPTING
@@ -124,7 +140,7 @@ async def adapt_all_chapters(
             db.add(adaptation)
     await db.commit()
 
-    for chapter in pending_chapters:
+    for chapter in chapters_to_adapt:
         asyncio.create_task(
             _run_adaptation(
                 chapter_id=chapter.id,
@@ -135,8 +151,8 @@ async def adapt_all_chapters(
 
     return {
         "project_id": project.id,
-        "chapters_queued": len(pending_chapters),
-        "message": f"开始改编 {len(pending_chapters)} 个章节...",
+        "chapters_queued": len(chapters_to_adapt),
+        "message": f"开始改编 {len(chapters_to_adapt)} 个章节...",
     }
 
 
