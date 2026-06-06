@@ -1,6 +1,6 @@
 # AI 小说转剧本工具 — 技术架构文档
 
-> **版本**: 0.1.0 (MVP) | **日期**: 2026-06-06
+> **版本**: 0.1.0 (MVP) | **日期**: 2026-06-06 | **更新**: 2026-06-06 (同步实现状态)
 
 ---
 
@@ -16,13 +16,14 @@
 
 | 层级 | 技术 | 版本 | 用途 |
 |------|------|------|------|
-| 语言 | Python | 3.11+ | 主语言 |
+| 语言 | Python | 3.12+ | 主语言 |
 | Web 框架 | FastAPI | 0.115.0 | REST API |
 | ASGI 服务器 | uvicorn | 0.30.6 | 开发/生产运行 |
-| ORM | SQLAlchemy | 2.0.35 | 异步数据库操作 |
+| ORM | SQLAlchemy | 2.0.35 | 异步 + 同步双引擎 |
 | 数据库 | SQLite (aiosqlite) | 0.20.0 | 本地持久化 |
 | 数据校验 | Pydantic + pydantic-settings | 2.9+ | 配置管理 + 类型校验 |
 | LLM SDK | anthropic (Claude) | 0.39.0 | Anthropic API 调用 |
+| LLM SDK | openai | 1.30+ | OpenAI / DeepSeek API 调用 |
 | HTTP 客户端 | httpx | 0.27.2 | Qwen API 调用 |
 | 文档生成 | python-docx | 1.1.2 | .docx 导出 |
 | 文件上传 | python-multipart | 0.0.12 | multipart 解析 |
@@ -116,9 +117,10 @@ AI-novel-to-script-tool/
 │       │   ├── upload.py          # POST /api/upload
 │       │   ├── projects.py        # GET/DELETE /api/projects[/{id}]
 │       │   ├── chapters.py        # POST 单章/批量改编 + 后台任务
-│       │   └── export.py          # GET /api/projects/{id}/export/{fmt}
+│       │   ├── export.py          # GET /api/projects/{id}/export/{fmt}
+│       │   └── demo.py            # POST /api/demo (示例小说)
 │       └── services/
-│           ├── ai_adapter.py      # 核心引擎: 3 LLM Provider + 4 Prompt
+│           ├── ai_adapter.py      # 核心引擎: 4 LLM Provider + 4 Prompt
 │           └── text_parser.py     # 中文小说解析: 分章 + 切块
 │
 ├── frontend/
@@ -134,8 +136,11 @@ AI-novel-to-script-tool/
 │       └── components/
 │           ├── ProjectList.tsx    # 项目卡片网格 (含删除)
 │           ├── UploadNovel.tsx    # 拖拽上传 (.txt/.epub)
-│           ├── ProjectDetail.tsx  # 双栏布局 + 改编控制 + 导出
-│           └── ScriptViewer.tsx   # 剧本语法高亮渲染器
+│           ├── ProjectDetail.tsx  # 双栏布局 + 改编控制 + 导出 + 原文/剧本切换
+│           ├── ScriptViewer.tsx   # 剧本语法高亮渲染器
+│           └── shared/
+│               ├── Toast.tsx      # Toast 通知系统
+│               └── DeleteModal.tsx # 删除确认模态框
 │
 ├── docs/
 │   ├── competitive-analysis.md    # 竞品技术分析报告
@@ -231,6 +236,8 @@ PENDING → ADAPTING → COMPLETED
 | `GET` | `/api/projects/{id}/export/markdown` | 导出 Markdown | → file download |
 | `GET` | `/api/projects/{id}/export/txt` | 导出纯文本 | → file download |
 | `GET` | `/api/projects/{id}/export/docx` | 导出 Word 文档 | → file download |
+| `POST` | `/api/demo` | 加载示例小说 | → `UploadResult` |
+| `PUT` | `/api/projects/{id}/style` | 更新项目风格 | → `{project_id, style, message}` |
 | `GET` | `/api/health` | 健康检查 | → `{status, version}` |
 
 ---
@@ -279,7 +286,10 @@ PENDING → ADAPTING → COMPLETED
       或 POST /api/projects/{id}/adapt-all
          │
          ▼
-后端: chapters.py → BackgroundTasks → _run_adaptation()
+后端: chapters.py → asyncio.create_task → _run_adaptation()
+         │
+         ├─ asyncio.to_thread(_sync_work)  ← 关键：避免 greenlet 冲突
+         │     └─ 使用 SyncSessionLocal (同步 SQLAlchemy engine)
          │
          ├─ 1. 构建角色上下文 (如果 Project.characters 非空)
          │     "已知人物信息: 角色名（性格）: 描述"
@@ -293,7 +303,7 @@ PENDING → ADAPTING → COMPLETED
          │
          ├─ 4. 逐 chunk 调用 AI:
          │     for chunk in chunks:
-         │       ai_adapter.adapt_chapter(
+         │       ai_adapter.adapt_chapter_sync(  ← 同步方法，线程安全
          │         chapter_text=chunk,
          │         style="film|comic|stage",
          │         character_context=...,
@@ -301,24 +311,22 @@ PENDING → ADAPTING → COMPLETED
          │       )
          │         │
          │         ▼
-         │     AIAdapter.adapt_chapter()
-         │       ├─ 选择 System Prompt (STYLE_PROMPTS[style])
-         │       ├─ 拼接 User Message:
-         │       │   已知人物信息 + 上一场结尾 + 小说文本
-         │       ├─ 路由到具体 Provider:
-         │       │   ├─ Anthropic: anthropic.AsyncAnthropic
-         │       │   ├─ OpenAI:   openai.AsyncOpenAI
-         │       │   └─ Qwen:     httpx → dashscope.aliyuncs.com
+         │     AIAdapter.adapt_chapter_sync()
+         │       ├─ 使用 openai.OpenAI (同步客户端, base_url="https://api.deepseek.com/v1")
+         │       ├─ extra_body={"thinking": {"type": "disabled"}}  ← 禁用 V4-Pro 思维链
          │       └─ 返回 LLM 生成的剧本文本
          │
          ├─ 5. 拼接所有 chunk 的剧本 (用 \n\n 连接)
          │
          ├─ 6. 更新 DB: chapter.script_text, status=COMPLETED
          │
-         └─ 7. 检查是否所有章节完成 → 更新 project.status
+         ├─ 7. 失败处理: logger.exception() 记录完整 traceback
+         │     └─ chapter.status=FAILED, chapter.error_message=str(e)
+         │
+         └─ 8. 检查是否所有章节完成 → 更新 project.status
          │
          ▼
-前端: 3 秒轮询 → 状态变化后刷新 → ScriptViewer 渲染
+前端: 2-3 秒轮询 → 状态变化后刷新 → ScriptViewer 渲染 → Toast 通知
 ```
 
 ### 6.3 导出
@@ -345,13 +353,19 @@ StreamingResponse (Content-Disposition: attachment)
 
 ### 7.1 现状：滑动窗口（仅短期记忆）
 
-当前改编流水线中，LLM 能获取的上下文仅有三个来源（[chapters.py:107-173](backend/app/api/chapters.py#L107-L173)）：
+当前改编流水线中，LLM 能获取的上下文来源（[chapters.py:113-213](backend/app/api/chapters.py#L113-L213)）：
 
 | 来源 | 机制 | 范围 | 局限 |
 |------|------|------|------|
-| 角色上下文 | 从 `Project.characters` 读取 | 全项目 | **永远为空** — `extract_characters()` 从未被调用 |
+| 角色上下文 | 从 `Project.characters` 读取 | 全项目 | **永远为空** — `extract_characters()` 从未被调用（代码已实现但未接线） |
 | 上一章末尾 | 上一章剧本最后 500 字符 | 仅前 1 章 | 非结构化文本，无法传递情节/状态信息 |
 | Chunk 重叠 | 长章切块时前 chunk 尾 300 字符 | 同一章内 | 仅解决切分断裂，不跨章 |
+
+**已实现改进**：
+- DeepSeek-V4-Pro thinking mode 已通过 `extra_body={"thinking": {"type": "disabled"}}` 禁用，避免推理 token 消耗输出空间
+- `original_text` 已通过 API 暴露给前端，用于原文/剧本对比
+- 同步引擎 (`SyncSessionLocal`) 解决后台任务 greenlet 冲突
+- 错误信息通过 `chapter.error_message` 传递到前端展示
 
 **核心问题**：改编第 10 章时，LLM 不知道第 1-8 章发生了什么。角色状态变化（黑化、死亡、离开）无法跨章追踪。
 
@@ -503,7 +517,19 @@ AI 角色: **舞台剧编剧**
 
 ## 9. 前端组件架构
 
-### 9.1 导航状态机
+### 9.1 组件概览
+
+| 组件 | 功能 | 关键特性 |
+|------|------|----------|
+| `App.tsx` | 根组件 + 页面状态机 | `page` + `selectedProjectId` 状态管理 |
+| `ProjectList.tsx` | 项目卡片网格 | 加载示例、空状态、删除确认 |
+| `UploadNovel.tsx` | 拖拽上传 | .txt/.epub 验证、进度动画 |
+| `ProjectDetail.tsx` | 项目详情（双栏） | 风格切换、原文/剧本对比、进度动画、质量 Warning、错误展示、防跳章 |
+| `ScriptViewer.tsx` | 剧本语法高亮 | 6 类 CSS 规则，支持原文和剧本渲染 |
+| `Toast.tsx` | Toast 通知 | Context Provider 模式，自动消失 |
+| `DeleteModal.tsx` | 删除确认 | 模态框覆盖层 |
+
+### 9.2 导航状态机
 
 ```
                     ┌──────────────┐
@@ -525,7 +551,7 @@ AI 角色: **舞台剧编剧**
         └──────────────────────────────────────┘
 ```
 
-### 9.2 ScriptViewer 语法高亮
+### 9.3 ScriptViewer 语法高亮
 
 | 规则 | 匹配 | 视觉 |
 |------|------|------|
@@ -542,7 +568,8 @@ AI 角色: **舞台剧编剧**
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `LLM_PROVIDER` | `anthropic` | LLM 提供商 (anthropic/openai/qwen) |
+| `LLM_PROVIDER` | `deepseek` | LLM 提供商 (anthropic/openai/qwen/deepseek) |
+| `DEEPSEEK_MODEL` | `deepseek-v4-pro` | DeepSeek 模型名称 |
 | `LLM_MAX_TOKENS` | `8192` | 每次 API 调用最大输出 token |
 | `LLM_TEMPERATURE` | `0.7` | 生成温度 |
 | `MAX_CHAPTER_LENGTH` | `8000` | 单次改编最大字符数 (超出则切分) |
@@ -557,8 +584,12 @@ AI 角色: **舞台剧编剧**
 ### 11.1 架构特点
 - **单体应用**: 前后端分离但部署在一起 (Vite proxy → FastAPI)
 - **无状态 API**: 无 Session，userId 固定为 "default"
-- **后台任务而非消息队列**: 改编任务通过 FastAPI BackgroundTasks 执行，非 Celery/Redis
-- **轮询而非推送**: 前端 3 秒 polling 检测改编完成，非 WebSocket/SSE
+- **双数据库引擎**: async SQLAlchemy (aiosqlite) 用于 API 请求 + sync SQLAlchemy (sqlite) 用于后台线程
+- **后台任务**: `asyncio.create_task()` + `asyncio.to_thread()` 执行改编，避免 BackgroundTasks 的 greenlet 冲突
+- **轮询而非推送**: 前端 2-3 秒 polling 检测改编完成，非 WebSocket/SSE
+- **多 LLM Provider**: Anthropic / OpenAI / Qwen / DeepSeek 四 Provider 可切换
+- **DeepSeek-V4-Pro**: 默认 Provider，成本 ~¥0.002/章，通过 `extra_body` 禁用思维链
+- **错误诊断**: `logging.basicConfig()` + `logger.exception()` 完整 traceback + `error_message` 前端展示
 - **单例 AIAdapter**: 全局共享同一个 provider 配置
 - **中文优先**: 所有 API 错误消息、UI 标签、提示词均为中文
 
@@ -572,6 +603,16 @@ AI 角色: **舞台剧编剧**
 - ❌ 自动化测试
 - ❌ YAML Schema 输出
 - ❌ EPUB 正文提取 (已接受文件但解析为纯文本)
+- ❌ 暗色模式 / 移动端适配
+
+### 11.3 已实现超出原计划
+- ✅ DeepSeek-V4-Pro 集成（原计划 Anthropic 默认）
+- ✅ 原文/剧本对比切换（新增需求）
+- ✅ Toast 通知系统
+- ✅ 同步数据库引擎（解决 greenlet 冲突）
+- ✅ 错误诊断完整链路（日志 → API → 前端展示）
+- ✅ 防章节跳转（useRef 初始加载守卫）
+- ✅ 假进度修复（仅循环处理中状态，完成由后端确认）
 
 ---
 
@@ -600,4 +641,4 @@ curl http://localhost:8000/api/health
 
 ---
 
-**文档生成日期**: 2026-06-06 | **基于代码版本**: `4516e88` (Initial commit)
+**文档生成日期**: 2026-06-06 | **更新**: 2026-06-06 | **基于代码版本**: `80a7456` (feature/demo-sample-novel-api)

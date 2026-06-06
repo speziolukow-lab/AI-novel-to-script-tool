@@ -1,6 +1,6 @@
 # AI 小说转剧本工具 — 信息架构设计 (IA)
 
-> **日期**: 2026-06-06 | **方法**: information-architecture (导航地图 → 领域模型 → 页面树 → 数据流 → API 表面)
+> **日期**: 2026-06-06 | **方法**: information-architecture (导航地图 → 领域模型 → 页面树 → 数据流 → API 表面) | **更新**: 2026-06-06 (同步实现状态)
 >
 > **输入来源**: [solution-design](solution-design.md)（方案范围） + [product-requirements](product-requirements.md)（用户画像/场景） + [implementation-plan](implementation-plan.md)（MVP 边界）
 >
@@ -33,6 +33,7 @@ flowchart TD
     J -->|逐章体验| K["点击「改编本章」<br/>情绪: 😊 期待看到效果"]
     J -->|批量产出| L["点击「一键改编全部」<br/>画像: 短剧编剧<br/>情绪: 😎 效率至上"]
     J -->|切换风格| M["点击风格切换按钮<br/>情绪: 🤔 看看漫画版怎么样"]
+    J -->|对比原文| M2["🆕 点击「原文」按钮<br/>情绪: 🧐 检查 AI 改编质量"]
     J -->|导出使用| N["点击导出 .md / .txt / .docx<br/>画像: 所有用户<br/>情绪: 😄 拿到成果"]
 
     K --> O["⏳ 等待改编...<br/>（3s 轮询进度）<br/>情绪: 😐→😊"]
@@ -89,7 +90,7 @@ erDiagram
         string project_id FK "→ projects.id (CASCADE)"
         int chapter_num "章序号（从 1 开始）"
         string title "章节标题（可空）"
-        text original_text "原文内容"
+        text original_text "原文内容（API 已暴露）"
         text script_text "AI 改编后的剧本文本（可空）"
         🔧 text chapter_summary "🆕 本章摘要（单章独立，可空）"
         🔧 text cumulative_summary "🆕 累积摘要（第1章～本章，可空）"
@@ -173,7 +174,7 @@ App.tsx（根路由 — 状态机：page + selectedProjectId）
     ├─ 顶部导航栏 (已有)
     │   ├─ ← 返回按钮 (已有)
     │   ├─ 项目标题 + 作者 + 状态 (已有)
-    │   ├─ 🔧 风格切换按钮组 🎬影视 / 📖漫画 / 🎭舞台
+    │   ├─ ✅ 风格切换按钮组 🎬影视 / 📖漫画 / 🎭舞台
     │   ├─ 一键改编全部按钮 (已有)
     │   └─ 导出按钮组 .md / .txt / .docx (已有)
     │
@@ -181,12 +182,13 @@ App.tsx（根路由 — 状态机：page + selectedProjectId）
     │   └─ ChapterListItem × N (已有)
     │       ├─ 状态圆点 🟢已完成 / 🟡进行中 / 🔴失败 / ⚪待改编 (已有)
     │       ├─ 章节序号 + 标题 (已有)
-    │       └─ 🔧 Warning 图标 ⚠️（质量检查不通过时显示）
+    │       └─ ✅ Warning 图标 ⚠️（质量检查不通过时显示）
     │
     └─ 右栏：剧本阅读器 (已有)
         ├─ 章节标题栏 + 改编按钮 (已有)
-        ├─ 🔧 改编进度阶段文字（"正在分析场景…" → "正在生成剧本…" → "已完成"）
-        ├─ 🔧 已用时间计数器
+        ├─ 🆕 原文/剧本对比切换按钮「原文 | 剧本」
+        ├─ ✅ 改编进度阶段文字（循环处理中动画）
+        ├─ ✅ 已用时间计数器
         ├─ ScriptViewer.tsx（语法高亮渲染器）(已有)
         │   ├─ 场景标题高亮 「第 X 场」 (已有)
         │   ├─ 元数据高亮 「时间/地点/人物」 (已有)
@@ -194,7 +196,8 @@ App.tsx（根路由 — 状态机：page + selectedProjectId）
         │   ├─ 对白高亮 「角色名：...」 (已有)
         │   └─ 画面/动作指示 (已有)
         ├─ 空状态引导（未改编时）(已有)
-        └─ 失败状态提示（改编失败时）(已有)
+        ├─ ✅ 失败状态提示 + 错误信息深色代码块
+        └─ ✅ Toast 通知（改编完成/失败/风格切换）
 ```
 
 ### 3.2 页面跳转关系
@@ -214,11 +217,13 @@ App.tsx（根路由 — 状态机：page + selectedProjectId）
 | 组件 | 变更类型 | 改动内容 |
 |------|---------|----------|
 | `App.tsx` | ✅ 不变 | 状态机逻辑无需改动 |
-| `ProjectList.tsx` | 🔧 修改 | 🆕 加载示例按钮 + 空状态 |
+| `ProjectList.tsx` | ✅ 已实现 | 加载示例按钮 + 空状态 + 删除模态框 |
 | `UploadNovel.tsx` | ✅ 不变 | 拖拽上传已完整 |
-| `ProjectDetail.tsx` | 🔧 修改 | 🆕 风格切换 UI + 🆕 进度阶段文字 + 🆕 时间计数 |
+| `ProjectDetail.tsx` | ✅ 已实现 | 风格切换 UI + 进度阶段动画 + 时间计数 + 原文/剧本切换 + 质量 Warning + 错误信息展示 + useRef 防跳章 |
 | `ScriptViewer.tsx` | ✅ 不变 | 6 类高亮已完整 |
-| `client.ts` | 🔧 修改 | 🆕 demo API 调用 + 🆕 风格更新 API 调用 |
+| `client.ts` | ✅ 已实现 | demo API + 风格更新 API + original_text 字段 |
+| `shared/Toast.tsx` | 🆕 已实现 | Toast 通知系统 |
+| `shared/DeleteModal.tsx` | 🆕 已实现 | 删除确认模态框 |
 
 ---
 
@@ -405,12 +410,12 @@ GET /api/projects/{id}/export/{format}
 | `POST` | `/api/chapters/{id}/adapt` | 🔧 `_run_adaptation` 接入：角色上下文 + 摘要链 + 结构预分析 + 质量自检 | ✅ 响应 `{chapter_id, status}` 不变 |
 | `POST` | `/api/projects/{id}/adapt-all` | 间接生效：底层调用 `chapters/{id}/adapt` | ✅ 响应不变 |
 
-#### 🆕 新增端点
+#### 🆕 新增端点（已实现）
 
 | 方法 | 路径 | 功能 | 认证 |
 |------|------|------|------|
-| `POST` | `/api/demo` | 🆕 加载示例小说 | 无（Demo 单用户） |
-| `PUT` | `/api/projects/{id}/style` | 🆕 更新项目风格（film/comic/stage） | 无（Demo 单用户） |
+| `POST` | `/api/demo` | ✅ 加载示例小说（斗破苍穹） | 无（Demo 单用户） |
+| `PUT` | `/api/projects/{id}/style` | ✅ 更新项目风格（film/comic/stage） | 无（Demo 单用户） |
 
 ### 5.3 新增端点详细设计
 
@@ -496,19 +501,24 @@ GET /api/projects/{id}/export/{format}
 
 ```
 backend/
-├── app/core/config.py             🔧 修改: DEEPSEEK_API_KEY + DEEPSEEK_MODEL
-├── app/models/__init__.py         🔧 修改: Chapter 表 +3 字段
-├── app/services/ai_adapter.py     🔧 修改: +DeepSeek +summarize +pre_analyze +quality_check +Prompt增强
-├── app/api/upload.py              🔧 修改: +extract_characters BackgroundTask
-├── app/api/chapters.py            🔧 修改: 摘要链 + 角色上下文 + 结构预分析 + 质量自检
-├── app/api/demo.py                🆕 新增: 示例小说端点
-├── .env.example                   🔧 修改: +DeepSeek 配置项
-└── data/samples/sample.txt        🆕 新增: 预置示例小说
+├── app/core/config.py             ✅ 已修改: DEEPSEEK_API_KEY + DEEPSEEK_MODEL
+├── app/core/database.py           ✅ 已修改: +SyncSessionLocal (sync engine)
+├── app/models/__init__.py         🔧 待修改: Chapter 表 +3 字段 (summary/warnings)
+├── app/services/ai_adapter.py     ✅ 已修改: +DeepSeek (_call_deepseek + adapt_chapter_sync) +thinking disabled
+├── app/api/upload.py              🔧 待修改: +extract_characters BackgroundTask
+├── app/api/chapters.py            ✅ 已修改: asyncio.create_task + asyncio.to_thread + SyncSessionLocal + error_message + logging
+├── app/api/projects.py            ✅ 已修改: +original_text 字段暴露
+├── app/api/demo.py                ✅ 已实现: 示例小说端点
+├── app/main.py                    ✅ 已修改: +logging.basicConfig()
+├── .env.example                   ✅ 已修改: +DeepSeek 配置项
+└── data/samples/斗破苍穹.txt       ✅ 已添加: 预置示例小说
 
 frontend/
-├── src/api/client.ts              🔧 修改: +loadDemo() +updateStyle()
-├── src/components/ProjectList.tsx  🔧 修改: +加载示例按钮 +空状态
-└── src/components/ProjectDetail.tsx🔧 修改: +风格切换 +进度文字 +时间计数 +warning图标
+├── src/api/client.ts              ✅ 已修改: +loadDemo() +updateStyle() +original_text +error_message
+├── src/components/ProjectList.tsx  ✅ 已修改: +加载示例按钮 +空状态 +删除模态框
+├── src/components/ProjectDetail.tsx✅ 已修改: +风格切换 +进度动画 +时间计数 +原文/剧本切换 +warning横幅 +error展示 +useRef防跳章
+├── src/components/ScriptViewer.tsx ✅ 不变
+└── src/components/shared/         🆕 新增: Toast.tsx + DeleteModal.tsx
 ```
 
 ### 6.2 兼容性评估
