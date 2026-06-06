@@ -59,6 +59,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   const [adaptStage, setAdaptStage] = useState(0);
   const [adaptElapsed, setAdaptElapsed] = useState(0);
   const [style, setStyle] = useState("film");
+  const [viewMode, setViewMode] = useState<"original" | "script">("script");
   const adaptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
@@ -338,6 +339,23 @@ export function ProjectDetail({ projectId, onBack }: Props) {
               <div className="script-panel-header">
                 <h3>第{activeChapter.chapter_num}章 · {activeChapter.title}</h3>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  {/* Original vs Script view toggle */}
+                  {activeChapter.script_text && activeChapter.original_text && (
+                    <div className="style-switcher">
+                      <button
+                        className={viewMode === "original" ? "active" : ""}
+                        onClick={() => setViewMode("original")}
+                      >
+                        原文
+                      </button>
+                      <button
+                        className={viewMode === "script" ? "active" : ""}
+                        onClick={() => setViewMode("script")}
+                      >
+                        剧本
+                      </button>
+                    </div>
+                  )}
                   {activeChapter.status === "completed" ? (
                     <span className="adapt-status done">✅ 已改编</span>
                   ) : activeChapter.status === "adapting" ? (
@@ -379,7 +397,9 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                 </div>
               ) : (
                 <div className="script-content">
-                  {activeChapter.script_text ? (
+                  {viewMode === "original" && activeChapter.original_text ? (
+                    <ScriptViewer text={activeChapter.original_text} />
+                  ) : viewMode === "script" && activeChapter.script_text ? (
                     <ScriptViewer text={activeChapter.script_text} />
                   ) : activeChapter.status === "adapting" ? (
                     <div style={{ textAlign: "center", padding: "48px 0" }}>

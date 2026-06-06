@@ -62,6 +62,7 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
                 "chapter_num": c.chapter_num,
                 "title": c.title,
                 "status": c.status.value,
+                "original_text": c.original_text,
                 "script_text": c.script_text,
                 "scenes": c.scenes,
                 "characters": c.characters_in_chapter,

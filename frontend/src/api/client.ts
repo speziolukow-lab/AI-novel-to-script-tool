@@ -20,6 +20,7 @@ export interface ChapterInfo {
   chapter_num: number;
   title: string;
   status: string;
+  original_text: string | null;
   script_text: string | null;
   scenes: any | null;
   characters: any | null;
