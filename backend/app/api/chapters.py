@@ -1,6 +1,9 @@
 """Chapters API — trigger AI adaptation for individual chapters."""
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -182,6 +185,7 @@ async def _run_adaptation(
             await _maybe_complete_project(db, project_id)
 
         except Exception as e:
+            logger.exception(f"Chapter adaptation failed: chapter_id={chapter_id}")
             # Mark as failed
             result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
             chapter = result.scalar_one_or_none()

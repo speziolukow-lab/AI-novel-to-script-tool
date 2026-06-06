@@ -22,12 +22,14 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 50
 
     # AI / LLM
-    LLM_PROVIDER: str = "anthropic"  # "anthropic" | "openai" | "qwen"
+    LLM_PROVIDER: str = "anthropic"  # "anthropic" | "openai" | "qwen" | "deepseek"
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-sonnet-4-6"  # default model
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o"
     QWEN_API_KEY: str = ""
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_MODEL: str = "deepseek-v4-pro"
 
     # LLM params
     LLM_MAX_TOKENS: int = 8192

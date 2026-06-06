@@ -170,6 +170,8 @@ class AIAdapter:
             return await self._call_openai(system_prompt, user_message)
         elif self.provider == "qwen":
             return await self._call_qwen(system_prompt, user_message)
+        elif self.provider == "deepseek":
+            return await self._call_deepseek(system_prompt, user_message)
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
@@ -186,6 +188,8 @@ class AIAdapter:
             result = await self._call_openai(system_prompt, user_message)
         elif self.provider == "qwen":
             result = await self._call_qwen(system_prompt, user_message)
+        elif self.provider == "deepseek":
+            result = await self._call_deepseek(system_prompt, user_message)
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
@@ -251,6 +255,27 @@ class AIAdapter:
             )
             data = response.json()
             return data["choices"][0]["message"]["content"]
+
+    async def _call_deepseek(self, system_prompt: str, user_message: str) -> str:
+        """Call DeepSeek API (OpenAI-compatible)."""
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(
+            api_key=settings.DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com",
+        )
+
+        response = await client.chat.completions.create(
+            model=settings.DEEPSEEK_MODEL,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=settings.LLM_TEMPERATURE,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+        )
+
+        return response.choices[0].message.content or ""
 
     # ── Helpers ────────────────────────────────────────────────
 

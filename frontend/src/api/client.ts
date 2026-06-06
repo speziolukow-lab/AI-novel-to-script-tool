@@ -23,6 +23,7 @@ export interface ChapterInfo {
   script_text: string | null;
   scenes: any | null;
   characters: any | null;
+  error_message: string | null;
 }
 
 export interface ProjectDetail extends ProjectSummary {

@@ -386,8 +386,20 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                       <p style={{ color: "#94a3b8", fontSize: "14px" }}>AI 正在改编中...</p>
                     </div>
                   ) : activeChapter.status === "failed" ? (
-                    <div style={{ textAlign: "center", padding: "48px 0", color: "#ef4444", fontSize: "14px" }}>
-                      改编失败，请重试
+                    <div style={{ textAlign: "center", padding: "48px 0", fontSize: "14px" }}>
+                      <div style={{ color: "#ef4444", fontWeight: 600, marginBottom: "12px" }}>
+                        ❌ 改编失败，请重试
+                      </div>
+                      {activeChapter.error_message && (
+                        <div style={{
+                          maxWidth: "500px", margin: "0 auto", padding: "12px 16px",
+                          background: "#1e293b", color: "#f1f5f9", borderRadius: "8px",
+                          fontSize: "12px", fontFamily: "monospace", textAlign: "left",
+                          whiteSpace: "pre-wrap", wordBreak: "break-all",
+                        }}>
+                          {activeChapter.error_message}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div style={{
