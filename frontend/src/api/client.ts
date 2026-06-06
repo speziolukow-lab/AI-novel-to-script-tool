@@ -105,3 +105,21 @@ export function exportDocxUrl(projectId: string): string {
 export function exportTxtUrl(projectId: string): string {
   return `${BASE}/projects/${projectId}/export/txt`;
 }
+
+export async function loadDemo(): Promise<UploadResult> {
+  const res = await fetch(`${BASE}/demo`, { method: "POST" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(detail.detail || "Demo load failed");
+  }
+  return res.json();
+}
+
+export async function updateStyle(projectId: string, style: string): Promise<void> {
+  const res = await fetch(`${BASE}/projects/${projectId}/style`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ style }),
+  });
+  if (!res.ok) throw new Error("Failed to update style");
+}

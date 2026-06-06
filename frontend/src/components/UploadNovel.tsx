@@ -1,16 +1,27 @@
 import { useState, useRef } from "react";
 import { uploadNovel } from "../api/client";
+import { useToast } from "./shared/Toast";
 
 interface Props {
   onSuccess: (projectId: string) => void;
 }
 
+const UPLOAD_STAGES = [
+  "正在保存文件…",
+  "正在解析编码 (UTF-8/GBK)…",
+  "正在识别章节边界…",
+  "正在提取标题与作者信息…",
+  "✅ 解析完成！正在跳转…",
+];
+
 export function UploadNovel({ onSuccess }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadStage, setUploadStage] = useState(-1);
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const handleFile = (f: File | null) => {
     if (!f) return;
@@ -31,100 +42,140 @@ export function UploadNovel({ onSuccess }: Props) {
     if (!file) return;
     setUploading(true);
     setError("");
+
+    let stageIdx = 0;
+    setUploadStage(stageIdx);
+    const stageInterval = setInterval(() => {
+      stageIdx++;
+      if (stageIdx < UPLOAD_STAGES.length - 1) {
+        setUploadStage(stageIdx);
+      }
+    }, 800);
+
     try {
       const result = await uploadNovel(file);
-      onSuccess(result.project_id);
+      clearInterval(stageInterval);
+      setUploadStage(UPLOAD_STAGES.length - 1);
+      toast("✅ 解析完成！共识别 " + result.total_chapters + " 章");
+      setTimeout(() => {
+        setUploading(false);
+        setUploadStage(-1);
+        onSuccess(result.project_id);
+      }, 600);
     } catch (e: any) {
+      clearInterval(stageInterval);
+      setUploadStage(-1);
       setError(e.message || "上传失败，请重试");
-    } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="max-w-xl mx-auto">
-      <h2 className="text-2xl font-bold text-slate-800 mb-2">上传小说</h2>
-      <p className="text-slate-500 mb-6">
-        支持 .txt 和 .epub 格式，最大 50MB。AI 将自动识别章节并改编为剧本。
-      </p>
-
-      {/* Drop Zone */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          handleFile(e.dataTransfer.files[0]);
-        }}
-        onClick={() => fileRef.current?.click()}
-        className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors
-          ${dragOver ? "border-indigo-400 bg-indigo-50" : "border-slate-300 hover:border-indigo-300"}
-          ${file ? "bg-green-50 border-green-300" : ""}`}
-      >
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".txt,.epub"
-          className="hidden"
-          onChange={(e) => handleFile(e.target.files?.[0] || null)}
-        />
-        {file ? (
-          <div>
-            <p className="text-4xl mb-3">📄</p>
-            <p className="text-lg font-medium text-slate-700">{file.name}</p>
-            <p className="text-sm text-slate-400 mt-1">
-              {(file.size / 1024).toFixed(1)} KB
-            </p>
-          </div>
-        ) : (
-          <div>
-            <p className="text-4xl mb-3">📁</p>
-            <p className="text-slate-600 font-medium">
-              拖拽小说文件到此处，或点击选择
-            </p>
-            <p className="text-sm text-slate-400 mt-2">.txt / .epub</p>
-          </div>
-        )}
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-          {error}
-        </div>
-      )}
-
-      {/* Submit */}
+    <div>
+      {/* Back link */}
       <button
-        disabled={!file || uploading}
-        onClick={handleSubmit}
-        className="mt-6 w-full py-3 rounded-lg font-medium text-white transition-colors
-          bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+        onClick={() => window.history.back()}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: "6px",
+          color: "#64748b", fontSize: "14px", cursor: "pointer",
+          border: "none", background: "none", marginBottom: "20px", padding: "4px 0",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "#6366f1"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "#64748b"; }}
       >
-        {uploading ? (
-          <span className="flex items-center justify-center gap-2">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle
-                className="opacity-25"
-                cx="12" cy="12" r="10"
-                stroke="currentColor" strokeWidth="4" fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
-            解析中...
-          </span>
-        ) : (
-          "开始解析"
-        )}
+        ← 返回项目列表
       </button>
+
+      <div style={{ maxWidth: "720px", margin: "0 auto", position: "relative" }}>
+        {/* Drop zone */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
+          onClick={() => fileRef.current?.click()}
+          className={`drop-zone ${dragOver ? "drag-over" : ""}`}
+          style={file ? { background: "#f0fdf4", borderColor: "#86efac" } : undefined}
+        >
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".txt,.epub"
+            style={{ display: "none" }}
+            onChange={(e) => handleFile(e.target.files?.[0] || null)}
+          />
+          {file ? (
+            <div>
+              <p style={{ fontSize: "48px", marginBottom: "12px" }}>📄</p>
+              <p style={{ fontSize: "16px", fontWeight: 700, color: "#1e293b", marginBottom: "4px" }}>
+                {file.name}
+              </p>
+              <p style={{ fontSize: "13px", color: "#64748b" }}>
+                {(file.size / 1024).toFixed(1)} KB
+              </p>
+            </div>
+          ) : (
+            <div>
+              <div className="icon">📁</div>
+              <h3>拖拽小说文件到此处，或点击选择</h3>
+              <p>支持 .txt / .epub 格式，最大 50MB</p>
+            </div>
+          )}
+        </div>
+
+        {/* Upload progress */}
+        {uploading && (
+          <div className="upload-progress">
+            <div className="filename">{file?.name}</div>
+            <div className="stage">{UPLOAD_STAGES[uploadStage] || "处理中..."}</div>
+            <div className="progress-track">
+              <div className="progress-indeterminate" />
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div style={{
+            marginTop: "16px", padding: "12px 16px",
+            background: "#fef2f2", border: "1px solid #fecaca",
+            borderRadius: "8px", color: "#991b1b", fontSize: "13px",
+          }}>
+            {error}
+          </div>
+        )}
+
+        {/* Submit button */}
+        <button
+          disabled={!file || uploading}
+          onClick={handleSubmit}
+          className="btn btn-primary"
+          style={{ marginTop: "24px", width: "100%", justifyContent: "center", padding: "12px" }}
+        >
+          {uploading ? (
+            <>
+              <div className="spinner" style={{ width: "16px", height: "16px", borderWidth: "2px", margin: "0" }} />
+              解析中...
+            </>
+          ) : (
+            "开始解析"
+          )}
+        </button>
+
+        {/* Info cards row */}
+        <div className="upload-info-row">
+          {[
+            { icon: "📄", title: "支持格式", desc: ".txt / .epub\n最大 50MB" },
+            { icon: "🔤", title: "编码兼容", desc: "UTF-8 / GBK\n自动检测编码" },
+            { icon: "📑", title: "章节识别", desc: "「第X章」「Chapter X」\n序章 / 楔子 / 尾声" },
+          ].map((card) => (
+            <div key={card.title} className="upload-info-card">
+              <div className="info-icon">{card.icon}</div>
+              <div className="info-title">{card.title}</div>
+              <div className="info-desc" style={{ whiteSpace: "pre-line" }}>{card.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

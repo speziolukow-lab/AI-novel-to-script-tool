@@ -1,89 +1,91 @@
 /**
- * Script viewer with syntax highlighting for script format.
- *
- * Parses the output format:
- *   第 X 场
- *   时间：XX  地点：XX  人物：XX
- *   【舞台指示】
- *   角色A：（对白）
+ * Script viewer with syntax highlighting matching prototype design.
  */
 export function ScriptViewer({ text }: { text: string }) {
   const lines = text.split("\n");
 
   return (
-    <div className="script-content font-mono text-sm leading-relaxed">
+    <>
       {lines.map((line, i) => {
-        // Scene header
-        if (/^第\s*\d+[\s]*场/.test(line.trim())) {
+        const trimmed = line.trim();
+
+        // Scene header: 第 X 场
+        if (/^第\s*\d+\s*场/.test(trimmed)) {
           return (
-            <div key={i} className="text-indigo-700 font-bold text-base mt-6 mb-2 border-b border-indigo-100 pb-1">
+            <span key={i} className="scene-title" style={{ display: "block" }}>
+              {line}
+            </span>
+          );
+        }
+
+        // Metadata: 时间/地点/人物
+        if (/^(时间|地点|人物)[：:]/.test(trimmed)) {
+          return (
+            <span key={i} className="scene-meta" style={{ display: "block" }}>
+              {line}
+            </span>
+          );
+        }
+
+        // Stage direction: 【...】
+        if (/^【.*】/.test(trimmed)) {
+          return (
+            <div key={i} className="stage-direction">
               {line}
             </div>
           );
         }
 
-        // Metadata line (时间/地点/人物)
-        if (/^(时间|地点|人物)[：:]/.test(line.trim())) {
+        // Scene break: --- or — — —
+        if (/^[-—]{2,}$/.test(trimmed) || /^[—]\s*[—]\s*[—]$/.test(trimmed)) {
           return (
-            <div key={i} className="text-slate-500 text-xs ml-2 mb-1">
+            <span key={i} className="scene-break" style={{ display: "block" }}>
+              — — —
+            </span>
+          );
+        }
+
+        // Dialogue: 角色名：对白
+        const dMatch = line.match(/^(\S+?)[：:]\s*(.+)/);
+        if (dMatch && !/^(时间|地点|人物|第)/.test(trimmed)) {
+          return (
+            <div key={i} className="dialogue">
+              <span className="speaker">{dMatch[1]}：</span>
+              <span className="line">{dMatch[2]}</span>
+            </div>
+          );
+        }
+
+        // Scene description
+        if (/^\[画面[：:]\s*.*\]/.test(trimmed)) {
+          return (
+            <div key={i} style={{ color: "#6366f1", fontStyle: "italic", margin: "4px 0 4px 16px", fontSize: "13px" }}>
               {line}
             </div>
           );
         }
 
-        // Stage direction
-        if (/^【.*】/.test(line.trim())) {
+        // Generic bracket action
+        if (/^\[.*\]/.test(trimmed)) {
           return (
-            <div key={i} className="text-indigo-500 italic ml-4 my-2 leading-relaxed">
-              {line}
-            </div>
-          );
-        }
-
-        // Scene description (画面描述)
-        if (/^\[画面[：:]\s*.*\]/.test(line.trim())) {
-          return (
-            <div key={i} className="text-indigo-400 italic ml-4 my-1">
-              {line}
-            </div>
-          );
-        }
-
-        // Dialogue (角色A：...)
-        const dialogueMatch = line.match(/^(\S+?)[：:]\s*(.+)/);
-        if (dialogueMatch && !/^(时间|地点|人物|第)/.test(line.trim())) {
-          return (
-            <div key={i} className="ml-6 my-1 flex">
-              <span className="text-slate-800 font-semibold shrink-0">
-                {dialogueMatch[1]}：
-              </span>
-              <span className="text-slate-600 ml-1">{dialogueMatch[2]}</span>
-            </div>
-          );
-        }
-
-        // Action direction (action in brackets)
-        const actionMatch = line.match(/^\[([^画面].*?)\]/);
-        if (actionMatch) {
-          return (
-            <div key={i} className="text-slate-400 text-xs ml-6 my-1">
+            <div key={i} style={{ color: "#94a3b8", fontSize: "12px", margin: "2px 0 2px 24px" }}>
               {line}
             </div>
           );
         }
 
         // Empty line
-        if (line.trim() === "") {
-          return <div key={i} className="h-2" />;
+        if (trimmed === "") {
+          return <div key={i} style={{ height: "8px" }} />;
         }
 
-        // Default text
+        // Default
         return (
-          <div key={i} className="text-slate-700 ml-2 my-0.5">
+          <div key={i} style={{ color: "#334155", margin: "2px 0 2px 8px" }}>
             {line}
           </div>
         );
       })}
-    </div>
+    </>
   );
 }
