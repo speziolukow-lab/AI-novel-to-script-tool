@@ -98,6 +98,63 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   const initialLoadRef = useRef(true);
   const styleLoadedRef = useRef(false);
 
+  // ── Resizable panel widths ──
+  const [containerWidth, setContainerWidth] = useState(1800);
+  const [leftWidth, setLeftWidth] = useState(260);
+  const [rightWidth, setRightWidth] = useState(220);
+  const resizing = useRef<"leftEdge" | "left" | "right" | "rightEdge" | null>(null);
+  const resizeStartX = useRef(0);
+  const resizeStartW = useRef(0);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const side = resizing.current;
+      if (!side) return;
+      const delta = e.pageX - resizeStartX.current;
+      if (side === "leftEdge") {
+        // Drag left edge of layout → controls overall container width
+        // delta>0 (→) shrinks container, delta<0 (←) widens
+        setContainerWidth(Math.min(2200, Math.max(640, resizeStartW.current - delta)));
+      } else if (side === "left") {
+        setLeftWidth(Math.min(420, Math.max(180, resizeStartW.current + delta)));
+      } else if (side === "right") {
+        setRightWidth(Math.min(420, Math.max(140, resizeStartW.current - delta)));
+      } else {
+        // Drag right edge of layout → controls overall container width
+        // delta>0 (→) widens container, delta<0 (←) shrinks
+        setContainerWidth(Math.min(2200, Math.max(640, resizeStartW.current + delta)));
+      }
+    };
+    const onUp = () => {
+      if (resizing.current) {
+        resizing.current = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  const beginResize = (side: "leftEdge" | "left" | "right" | "rightEdge") => (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizing.current = side;
+    resizeStartX.current = e.pageX;
+    if (side === "leftEdge" || side === "rightEdge") {
+      resizeStartW.current = containerWidth;
+    } else if (side === "left") {
+      resizeStartW.current = leftWidth;
+    } else {
+      resizeStartW.current = rightWidth;
+    }
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
   const fetchProject = useCallback(async () => {
     try {
       const data = await getProject(projectId);
@@ -209,6 +266,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     script_text: null,
     error_message: null,
     scenes: null,
+    characters: null,
   } as AdaptationInfo;
   const activeWarnings = activeAdaptation.script_text ? checkQuality(activeAdaptation) : [];
   const scriptHighlightSet = new Set(activeWarnings.flatMap((w) => w.lines));
@@ -257,7 +315,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
 
   // Helper: get adaptation for a chapter + current style
   const getAdaptation = (ch: ChapterInfo): AdaptationInfo =>
-    ch.adaptations?.[style] ?? { status: "pending", script_text: null, error_message: null, scenes: null };
+    ch.adaptations?.[style] ?? { status: "pending", script_text: null, error_message: null, scenes: null, characters: null };
 
   // Loading
   if (loading) {
@@ -286,6 +344,12 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   const statusColor = project.status === "completed" ? "#166534"
     : project.status === "adapting" ? "#92400e"
     : "#64748b";
+
+  // Computed layout values for 3-column resizable layout
+  const showCharacters = !!(activeChapter && activeAdaptation.characters && activeAdaptation.characters.length > 0);
+  const HANDLE_W = 6; // each resize handle width in px
+  const handlesW = showCharacters ? HANDLE_W * 4 : HANDLE_W * 2; // edge + inner per side
+  const centerWidth = containerWidth - leftWidth - (showCharacters ? rightWidth : 0) - handlesW;
 
   return (
     <div>
@@ -358,12 +422,18 @@ export function ProjectDetail({ projectId, onBack }: Props) {
         </div>
       )}
 
-      {/* ── Two-column layout ── */}
-      <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
-        {/* LEFT: Chapters + Characters */}
-        <div style={{ width: "300px", flexShrink: 0 }}>
+      {/* ── Three-column resizable layout ── */}
+      <div style={{ display: "flex", alignItems: "flex-start", width: containerWidth, margin: "0 auto" }}>
+        {/* Resize handle: left edge → controls overall container width */}
+        <div
+          className="resize-handle resize-handle--edge"
+          onMouseDown={beginResize("leftEdge")}
+        />
+
+        {/* LEFT: Chapters */}
+        <div style={{ width: leftWidth, flexShrink: 0 }}>
           {/* Chapter panel */}
-          <div className="chapter-panel">
+          <div className="chapter-panel" style={{ maxHeight: "calc(100vh - 180px)" }}>
             <div className="chapter-panel-header">
               章节列表
               <span className="count">{project.chapters.length} 章</span>
@@ -393,43 +463,16 @@ export function ProjectDetail({ projectId, onBack }: Props) {
               })}
             </div>
           </div>
-
-          {/* F3: Character panel */}
-          {project.characters && project.characters.length > 0 && (
-            <div className="character-panel">
-              <div className="character-panel-header">
-                🎭 角色档案
-                <span style={{ fontSize: "10px", color: "#94a3b8" }}>AI 自动提取</span>
-              </div>
-              <div className="character-list">
-                {project.characters.map((ch) => (
-                  <div key={ch.id} className="character-row">
-                    <div className="ch-avatar">{ch.name[0]}</div>
-                    <div className="ch-info">
-                      <div className="ch-name">
-                        {ch.name}
-                        {ch.aliases && ch.aliases.length > 0 && (
-                          <span style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 400 }}>
-                            {" "}aka {ch.aliases.join("、")}
-                          </span>
-                        )}
-                      </div>
-                      {ch.description && (
-                        <div className="ch-role">{ch.description}</div>
-                      )}
-                      {ch.traits && ch.traits.length > 0 && (
-                        <div className="ch-traits">{ch.traits.join(" · ")}</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* RIGHT: Script viewer */}
-        <div className="script-panel">
+        {/* Resize handle: chapters ↔ script */}
+        <div
+          className="resize-handle"
+          onMouseDown={beginResize("left")}
+        />
+
+        {/* CENTER: Script viewer */}
+        <div className="script-panel" style={{ width: centerWidth, flexShrink: 0, maxHeight: "calc(100vh - 180px)", display: "flex", flexDirection: "column" }}>
           {activeChapter ? (
             <>
               {/* Script header */}
@@ -557,6 +600,64 @@ export function ProjectDetail({ projectId, onBack }: Props) {
             </div>
           )}
         </div>
+
+        {/* Resize handle: script ↔ characters (only when character panel visible) */}
+        {showCharacters && (
+          <div
+            className="resize-handle"
+            onMouseDown={beginResize("right")}
+          />
+        )}
+
+        {/* RIGHT: Per-chapter character profiles (5-chapter sliding window) */}
+        {showCharacters && (
+          <div style={{ width: rightWidth, flexShrink: 0 }}>
+            <div className="character-panel character-panel--right">
+              <div className="character-panel-header">
+                🎭 角色档案
+                <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+                  第{Math.max(1, activeChapter.chapter_num - 2)}-{activeChapter.chapter_num + 2}章
+                </span>
+              </div>
+              <div className="character-list">
+                {activeAdaptation.characters.map((ch, i) => (
+                  <div key={i} className="character-row">
+                    <div className="ch-avatar">{ch.name[0]}</div>
+                    <div className="ch-info">
+                      <div className="ch-name">
+                        {ch.name}
+                        {ch.role && (
+                          <span style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 400, marginLeft: "4px" }}>
+                            {ch.role}
+                          </span>
+                        )}
+                      </div>
+                      {ch.description && (
+                        <div className="ch-role">{ch.description}</div>
+                      )}
+                      {ch.traits && ch.traits.length > 0 && (
+                        <div className="ch-traits">{ch.traits.join(" · ")}</div>
+                      )}
+                      {ch.aliases && ch.aliases.length > 0 && (
+                        <div className="ch-traits" style={{ color: "#6366f1" }}>
+                          aka {ch.aliases.join("、")}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Resize handle: right edge → controls overall container width */}
+        {showCharacters && (
+          <div
+            className="resize-handle resize-handle--edge"
+            onMouseDown={beginResize("rightEdge")}
+          />
+        )}
       </div>
     </div>
   );

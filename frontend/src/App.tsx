@@ -146,16 +146,20 @@ function AppInner() {
       </header>
 
       {/* Main Content */}
-      <main style={{ maxWidth: "1280px", margin: "0 auto", padding: "16px 24px" }}>
+      <main style={{ padding: "16px 24px" }}>
         {page === "projects" && (
-          <ProjectList
-            onProjectClick={handleProjectClick}
-            onLoadDemo={handleLoadDemo}
-            onNavigateUpload={() => setPage("upload")}
-          />
+          <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
+            <ProjectList
+              onProjectClick={handleProjectClick}
+              onLoadDemo={handleLoadDemo}
+              onNavigateUpload={() => setPage("upload")}
+            />
+          </div>
         )}
         {page === "upload" && (
-          <UploadNovel onSuccess={handleUploadSuccess} onBack={() => setPage("projects")} />
+          <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
+            <UploadNovel onSuccess={handleUploadSuccess} onBack={() => setPage("projects")} />
+          </div>
         )}
         {page === "detail" && selectedProjectId && (
           <ProjectDetail

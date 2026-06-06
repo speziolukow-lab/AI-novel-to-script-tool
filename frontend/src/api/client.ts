@@ -27,11 +27,20 @@ export interface AlignmentData {
   version: number;
 }
 
+export interface CharacterData {
+  name: string;
+  aliases: string[];
+  description: string;
+  traits: string[];
+  role?: string;
+}
+
 export interface AdaptationInfo {
   status: string;
   script_text: string | null;
   error_message: string | null;
   scenes: AlignmentData | null;
+  characters: CharacterData[] | null;
 }
 
 export interface ChapterInfo {

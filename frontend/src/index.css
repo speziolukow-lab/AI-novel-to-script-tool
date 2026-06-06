@@ -215,11 +215,9 @@ body {
 
 /* ── Chapter panel ── */
 .chapter-panel {
-  width: 300px; flex-shrink: 0;
   background: #fff; border: 1px solid #e2e8f0;
   border-radius: 12px; overflow: hidden;
   box-shadow: 0 1px 2px rgba(0,0,0,.05);
-  max-height: calc(100vh - 180px);
   display: flex; flex-direction: column;
 }
 .chapter-panel-header {
@@ -294,9 +292,18 @@ body {
 .character-row .ch-role { font-size: 11px; color: #94a3b8; }
 .character-row .ch-traits { font-size: 10px; color: #94a3b8; margin-top: 1px; }
 
+/* Right-sidebar character panel variant */
+.character-panel--right {
+  margin-top: 0;
+  max-height: calc(100vh - 180px);
+  display: flex; flex-direction: column;
+}
+.character-panel--right .character-list {
+  flex: 1; overflow-y: auto; max-height: none;
+}
+
 /* ── Script panel ── */
 .script-panel {
-  flex: 1; min-width: 0;
   background: #fff; border: 1px solid #e2e8f0;
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(0,0,0,.05);
@@ -465,3 +472,26 @@ body {
 }
 .feat-tag.done  { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
 .feat-tag.todo  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+
+/* ── Resize handle (column drag divider) ── */
+.resize-handle {
+  width: 6px;
+  min-height: 200px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 150ms ease;
+  border-radius: 3px;
+  align-self: stretch;
+}
+.resize-handle:hover {
+  background: #e2e8f0;
+}
+.resize-handle:active {
+  background: #6366f1;
+}
+
+/* Edge resize handles (left of chapters, right of characters) */
+.resize-handle--edge {
+  /* same visual as inner handles, positioned at outer bounds */
+}

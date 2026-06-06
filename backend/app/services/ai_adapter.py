@@ -225,6 +225,33 @@ class AIAdapter:
         # Parse JSON from result
         return self._parse_character_json(result)
 
+    def extract_characters_sync(self, chapter_text: str) -> list[dict]:
+        """Synchronous version of extract_characters for use in thread pools."""
+        from openai import OpenAI
+
+        user_message = (
+            f"## 小说片段\n\n{chapter_text}\n\n" + CHARACTER_EXTRACTION_PROMPT
+        )
+        system_prompt = "你是一个专业的文学分析师，擅长从小说中提取人物信息。请严格按 JSON 格式返回。"
+
+        client = OpenAI(
+            api_key=settings.DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com/v1",
+        )
+
+        response = client.chat.completions.create(
+            model=settings.DEEPSEEK_MODEL,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=0.3,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+
+        return self._parse_character_json(response.choices[0].message.content or "")
+
     # ── Provider Implementations ───────────────────────────────
 
     async def _call_anthropic(self, system_prompt: str, user_message: str) -> str:

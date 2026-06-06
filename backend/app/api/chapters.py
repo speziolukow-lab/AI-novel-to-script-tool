@@ -184,14 +184,42 @@ async def _run_adaptation(
                 )
                 project = result.scalars().unique().first()
 
-                # Build character context
+                # ── Character extraction (5-chapter sliding window) ──
+                # For chapter N, use chapters [N-2, N+2] as context window.
                 character_context = None
-                if project and project.characters:
-                    char_lines = [
-                        f"- {c.name}（{''.join(c.traits or [])}）：{c.description or ''}"
-                        for c in project.characters
-                    ]
-                    character_context = "\n".join(char_lines)
+                chapter_characters: list[dict] = []
+                if project:
+                    # Calculate sliding window: max(1, N-2) to min(total, N+2)
+                    win_start = max(1, chapter.chapter_num - 2)
+                    win_end = min(project.total_chapters, chapter.chapter_num + 2)
+                    window_chapters = sorted(
+                        [c for c in project.chapters
+                         if win_start <= c.chapter_num <= win_end],
+                        key=lambda c: c.chapter_num,
+                    )
+                    window_text = "\n\n".join(
+                        c.original_text or "" for c in window_chapters
+                    )
+                    if window_text.strip():
+                        try:
+                            chapter_characters = ai_adapter.extract_characters_sync(
+                                window_text
+                            )
+                        except Exception:
+                            logger.exception(
+                                "Character extraction failed for chapter %d (window %d-%d)",
+                                chapter.chapter_num, win_start, win_end,
+                            )
+                            chapter_characters = []
+
+                    if chapter_characters:
+                        char_lines = [
+                            f"- {c.get('name', '未知')}"
+                            + (f"（{'、'.join(c.get('traits', []))}）" if c.get('traits') else "")
+                            + f"：{c.get('description', '')}"
+                            for c in chapter_characters
+                        ]
+                        character_context = "\n".join(char_lines)
 
                 # Get previous chapter's adaptation (same style) for continuity
                 prev_context = None
@@ -267,6 +295,8 @@ async def _run_adaptation(
                     "total_paras": total_paras,
                     "version": 1,
                 }
+                if chapter_characters:
+                    adaptation.characters_in_chapter = chapter_characters
                 adaptation.status = ChapterStatus.COMPLETED
                 # Also update chapter for backward compatibility
                 chapter.script_text = full_script
