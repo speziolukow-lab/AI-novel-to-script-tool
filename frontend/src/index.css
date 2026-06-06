@@ -413,6 +413,21 @@ body {
 .warning-banner .warn-item::before {
   content: "•"; position: absolute; left: 4px; color: #f59e0b;
 }
+.warning-banner .warn-item.clickable {
+  cursor: pointer; border-radius: 4px; transition: background 120ms;
+}
+.warning-banner .warn-item.clickable:hover {
+  background: #fef3c7;
+}
+
+/* ── Script highlight ── */
+.highlight-warn {
+  background: linear-gradient(90deg, #fef3c7 0%, #fffbeb 96%);
+  border-left: 3px solid #f59e0b;
+  padding-left: 6px !important;
+  margin-left: -3px;
+  border-radius: 0 4px 4px 0;
+}
 
 /* ── Toast ── */
 .toast {

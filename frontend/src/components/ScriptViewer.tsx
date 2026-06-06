@@ -1,18 +1,26 @@
 /**
  * Script viewer with syntax highlighting matching prototype design.
  */
-export function ScriptViewer({ text }: { text: string }) {
+interface ScriptViewerProps {
+  text: string;
+  highlightLines?: Set<number>;
+}
+
+export function ScriptViewer({ text, highlightLines }: ScriptViewerProps) {
   const lines = text.split("\n");
 
   return (
     <>
       {lines.map((line, i) => {
         const trimmed = line.trim();
+        const isHighlighted = highlightLines?.has(i);
+        const hlClass = isHighlighted ? " highlight-warn" : "";
+        const lineId = `script-line-${i}`;
 
         // Scene header: 第 X 场
         if (/^第\s*\d+\s*场/.test(trimmed)) {
           return (
-            <span key={i} className="scene-title" style={{ display: "block" }}>
+            <span key={i} id={lineId} className={`scene-title${hlClass}`} style={{ display: "block" }}>
               {line}
             </span>
           );
@@ -21,7 +29,7 @@ export function ScriptViewer({ text }: { text: string }) {
         // Metadata: 时间/地点/人物
         if (/^(时间|地点|人物)[：:]/.test(trimmed)) {
           return (
-            <span key={i} className="scene-meta" style={{ display: "block" }}>
+            <span key={i} id={lineId} className={`scene-meta${hlClass}`} style={{ display: "block" }}>
               {line}
             </span>
           );
@@ -30,7 +38,7 @@ export function ScriptViewer({ text }: { text: string }) {
         // Stage direction: 【...】
         if (/^【.*】/.test(trimmed)) {
           return (
-            <div key={i} className="stage-direction">
+            <div key={i} id={lineId} className={`stage-direction${hlClass}`}>
               {line}
             </div>
           );
@@ -39,7 +47,7 @@ export function ScriptViewer({ text }: { text: string }) {
         // Scene break: --- or — — —
         if (/^[-—]{2,}$/.test(trimmed) || /^[—]\s*[—]\s*[—]$/.test(trimmed)) {
           return (
-            <span key={i} className="scene-break" style={{ display: "block" }}>
+            <span key={i} id={lineId} className={`scene-break${hlClass}`} style={{ display: "block" }}>
               — — —
             </span>
           );
@@ -49,7 +57,7 @@ export function ScriptViewer({ text }: { text: string }) {
         const dMatch = line.match(/^(\S+?)[：:]\s*(.+)/);
         if (dMatch && !/^(时间|地点|人物|第)/.test(trimmed)) {
           return (
-            <div key={i} className="dialogue">
+            <div key={i} id={lineId} className={`dialogue${hlClass}`}>
               <span className="speaker">{dMatch[1]}：</span>
               <span className="line">{dMatch[2]}</span>
             </div>
@@ -59,7 +67,12 @@ export function ScriptViewer({ text }: { text: string }) {
         // Scene description
         if (/^\[画面[：:]\s*.*\]/.test(trimmed)) {
           return (
-            <div key={i} style={{ color: "#6366f1", fontStyle: "italic", margin: "4px 0 4px 16px", fontSize: "13px" }}>
+            <div
+              key={i}
+              id={lineId}
+              className={isHighlighted ? "highlight-warn" : ""}
+              style={{ color: "#6366f1", fontStyle: "italic", margin: "4px 0 4px 16px", fontSize: "13px" }}
+            >
               {line}
             </div>
           );
@@ -68,7 +81,12 @@ export function ScriptViewer({ text }: { text: string }) {
         // Generic bracket action
         if (/^\[.*\]/.test(trimmed)) {
           return (
-            <div key={i} style={{ color: "#94a3b8", fontSize: "12px", margin: "2px 0 2px 24px" }}>
+            <div
+              key={i}
+              id={lineId}
+              className={isHighlighted ? "highlight-warn" : ""}
+              style={{ color: "#94a3b8", fontSize: "12px", margin: "2px 0 2px 24px" }}
+            >
               {line}
             </div>
           );
@@ -76,12 +94,17 @@ export function ScriptViewer({ text }: { text: string }) {
 
         // Empty line
         if (trimmed === "") {
-          return <div key={i} style={{ height: "8px" }} />;
+          return <div key={i} id={lineId} className={isHighlighted ? "highlight-warn" : ""} style={{ height: "8px" }} />;
         }
 
         // Default
         return (
-          <div key={i} style={{ color: "#334155", margin: "2px 0 2px 8px" }}>
+          <div
+            key={i}
+            id={lineId}
+            className={isHighlighted ? "highlight-warn" : ""}
+            style={{ color: "#334155", margin: "2px 0 2px 8px" }}
+          >
             {line}
           </div>
         );

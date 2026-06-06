@@ -31,28 +31,54 @@ const ADAPT_STAGES = [
 ];
 
 // ── F11: Quality check ──
-function checkQuality(adapt: AdaptationInfo): string[] {
-  const warnings: string[] = [];
+interface QualityWarning {
+  message: string;
+  lines: number[];  // 0-based line indices; empty = global warning
+}
+
+function checkQuality(adapt: AdaptationInfo): QualityWarning[] {
+  const warnings: QualityWarning[] = [];
   if (!adapt.script_text) return warnings;
+
+  const allLines = adapt.script_text.split("\n");
+
+  // ── Scene count ──
   const sceneMatches = adapt.script_text.match(/第\s*\d+\s*场/g);
   const sceneCount = sceneMatches ? sceneMatches.length : 0;
   if (sceneCount > 0 && sceneCount < 3) {
-    warnings.push(`场景数偏少（仅 ${sceneCount} 场），可能遗漏场景切换`);
+    warnings.push({
+      message: `场景数偏少（仅 ${sceneCount} 场），可能遗漏场景切换`,
+      lines: [],
+    });
   }
-  const dialogueLines = adapt.script_text.split("\n").filter((l) => {
-    const t = l.trim();
-    if (!/^\S+?[：:]/.test(t)) return false;
-    // Exclude structural markers (scene headers, panel numbers, etc.)
-    if (/^(第\s*\d+\s*[场格幕帧镜页]|[时地人]点[：:]|【|[-─-╿]{2,})/.test(t)) return false;
-    return true;
+
+  // ── Dialogue format ──
+  const badLineIndices: number[] = [];
+  allLines.forEach((line, idx) => {
+    const t = line.trim();
+    if (!/^\S+?[：:]/.test(t)) return;
+    // Exclude structural markers
+    if (/^(第\s*\d+\s*[场格幕帧镜页]|[时地人]点[：:]|【|[-─-╿]{2,})/.test(t)) return;
+    // Check proper dialogue format
+    if (!/^[^\s：:]{1,10}[：:]\s*\S/.test(t)) {
+      badLineIndices.push(idx);
+    }
   });
-  const badlyFormatted = dialogueLines.filter((l) => !/^[^\s：:]{1,10}[：:]\s*\S/.test(l.trim()));
-  if (badlyFormatted.length > 0) {
-    warnings.push(`对话格式不规范：${badlyFormatted.length} 处缺少「角色名：」前缀，疑似 LLM 将叙述与对白混淆`);
+  if (badLineIndices.length > 0) {
+    warnings.push({
+      message: `对话格式不规范：${badLineIndices.length} 处缺少「角色名：」前缀，疑似 LLM 将叙述与对白混淆`,
+      lines: badLineIndices,
+    });
   }
+
+  // ── Output length ──
   if (adapt.script_text.length < 500) {
-    warnings.push("产出长度不足原文的 30%，可能 LLM 未完整改编");
+    warnings.push({
+      message: "产出长度不足原文的 30%，可能 LLM 未完整改编",
+      lines: [],
+    });
   }
+
   return warnings;
 }
 
@@ -184,6 +210,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     error_message: null,
   } as AdaptationInfo;
   const activeWarnings = activeAdaptation.script_text ? checkQuality(activeAdaptation) : [];
+  const highlightSet = new Set(activeWarnings.flatMap((w) => w.lines));
 
   // Helper: get adaptation for a chapter + current style
   const getAdaptation = (ch: ChapterInfo): AdaptationInfo =>
@@ -408,7 +435,24 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                 <div className="warning-banner">
                   <div className="warn-title">⚠️ 质量检查未通过（{activeWarnings.length} 项）</div>
                   {activeWarnings.map((w, i) => (
-                    <div key={i} className="warn-item">{w}</div>
+                    <div
+                      key={i}
+                      className={`warn-item${w.lines.length > 0 ? " clickable" : ""}`}
+                      onClick={() => {
+                        if (w.lines.length > 0) {
+                          const el = document.getElementById(`script-line-${w.lines[0]}`);
+                          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }
+                      }}
+                      title={w.lines.length > 0 ? "点击定位到第一个问题行" : undefined}
+                    >
+                      {w.message}
+                      {w.lines.length > 0 && (
+                        <span style={{ fontSize: "11px", color: "#d97706", marginLeft: "6px" }}>
+                          🔍 定位
+                        </span>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -427,7 +471,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                   {viewMode === "original" && activeChapter.original_text ? (
                     <ScriptViewer text={activeChapter.original_text} />
                   ) : viewMode === "script" && activeAdaptation.script_text ? (
-                    <ScriptViewer text={activeAdaptation.script_text} />
+                    <ScriptViewer text={activeAdaptation.script_text} highlightLines={highlightSet} />
                   ) : activeAdaptation.status === "adapting" ? (
                     <div style={{ textAlign: "center", padding: "48px 0" }}>
                       <div className="spinner" style={{ margin: "0 auto 12px" }} />
