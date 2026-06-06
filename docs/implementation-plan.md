@@ -1,8 +1,15 @@
 # AI小说转剧本 Demo 实施计划
 
+> **状态**: Phase 0-3 已全部完成 ✅ | Phase 4 (EPUB) 未实施 | **更新**: 2026-06-06
+
 ## Context
 
-项目 `AI-novel-to-script-tool` 已有完整的前后端脚手架：FastAPI 后端（上传/解析/AI改编/导出）+ React 前端（项目列表/上传/剧本阅读器）+ 3 个 LLM 适配器（Anthropic/OpenAI/Qwen）。但缺少 `.env` 配置、角色提取未接入改编流水线、Prompt 较基础。目标是快速打造一个能**端到端演示**的 Demo。
+项目 `AI-novel-to-script-tool` 已有完整的前后端脚手架：FastAPI 后端（上传/解析/AI改编/导出）+ React 前端（项目列表/上传/剧本阅读器）+ 3 个 LLM 适配器（Anthropic/OpenAI/Qwen）。目标是快速打造一个能**端到端演示**的 Demo。
+
+**已完成超出原计划的新增功能**：
+- ✅ Adaptation 表 — 多风格独立改编存储
+- ✅ 质量检查问题高亮 — 剧本 + 原文双视图独立高亮，点击定位
+- ✅ 风格切换防覆盖 — useRef 守卫 + 独立存储
 
 ---
 

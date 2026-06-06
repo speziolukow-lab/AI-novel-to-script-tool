@@ -1,6 +1,6 @@
 # AI 小说转剧本工具 — 技术架构文档
 
-> **版本**: 0.1.0 (MVP) | **日期**: 2026-06-06 | **更新**: 2026-06-06 (同步实现状态)
+> **版本**: 0.1.0 (MVP) | **日期**: 2026-06-06 | **更新**: 2026-06-06 (同步 Adaptation 表 + 质量高亮)
 
 ---
 
@@ -166,7 +166,7 @@ AI-novel-to-script-tool/
 │ original_filename: str│
 │ file_path: str?      │
 │ status: enum         │  ← UPLOADED → PARSING → PARSED → ADAPTING → COMPLETED/FAILED
-│ style: str           │  ← "film" | "comic" | "stage"
+│ style: str           │  ← "film" | "comic" | "stage"（当前选择）
 │ total_chapters: int  │
 │ metadata_: JSON      │
 │ created_at: datetime │
@@ -195,17 +195,35 @@ AI-novel-to-script-tool/
        │                      │ chapter_num: int     │
        │                      │ title: str?          │
        │                      │ original_text: text  │
-       │                      │ script_text: text?   │  ← AI 生成
+       │                      │ script_text: text?   │  ← 遗留字段（向后兼容）
        │                      │ chapter_summary: text?│  ← 本章摘要 (计划中)
        │                      │ cumulative_summary:  │  ← 累积摘要 (计划中)
        │                      │   text?              │
-       │                      │ scenes: JSON?        │
-       │                      │ characters: JSON?    │
-       │                      │ status: enum         │  ← PENDING → ADAPTING → COMPLETED/FAILED
-       │                      │ error_message: text? │
+       │                      │ scenes: JSON?        │  ← 遗留字段
+       │                      │ characters: JSON?    │  ← 遗留字段
+       │                      │ status: enum         │  ← 遗留字段（以 Adaptation.status 为准）
+       │                      │ error_message: text? │  ← 遗留字段
        │                      │ created_at/updated_at│
-       └──────────────────────┘
+       └──────┬───────────────┘
+              │ 1
+              │
+              │ *                    ┌──────────────────────────┐
+              ├──────────────────────│     Adaptation           │
+              │  (cascade delete)    │──────────────────────────│
+              │                      │ id: UUID (PK)            │
+              │                      │ chapter_id: FK           │
+              │                      │ style: str               │  ← "film" | "comic" | "stage"
+              │                      │ script_text: text?       │  ← 该风格的剧本
+              │                      │ status: enum             │  ← PENDING → ADAPTING → COMPLETED/FAILED
+              │                      │ error_message: text?     │
+              │                      │ scenes: JSON?            │
+              │                      │ characters: JSON?        │  ← 本章出场角色
+              │                      │ created_at / updated_at  │
+              │                      │ UNIQUE(chapter_id, style)│  ← 每章每种风格独立记录
+              └──────────────────────────┘
 ```
+
+> **设计决策**: Adaptation 表实现多风格独立存储。每章可以有 film / comic / stage 三条 Adaptation 记录，各自独立改编、独立状态。Chapter 表上的 `script_text` / `status` / `error_message` 保留为遗留字段（向后兼容），新代码读写 Adaptation 表。
 
 ### 4.2 状态机
 
@@ -525,9 +543,9 @@ AI 角色: **舞台剧编剧**
 | `ProjectList.tsx` | 项目卡片网格 | 加载示例、空状态、删除确认 |
 | `UploadNovel.tsx` | 拖拽上传 | .txt/.epub 验证、进度动画 |
 | `ProjectDetail.tsx` | 项目详情（双栏） | 风格切换、原文/剧本对比、进度动画、质量 Warning、错误展示、防跳章 |
-| `ScriptViewer.tsx` | 剧本语法高亮 | 6 类 CSS 规则，支持原文和剧本渲染 |
+| `ScriptViewer.tsx` | 剧本语法高亮 | 6 类 CSS 规则，支持 highlightLines 质量高亮，原文/剧本双模式 |
 | `Toast.tsx` | Toast 通知 | Context Provider 模式，自动消失 |
-| `DeleteModal.tsx` | 删除确认 | 模态框覆盖层 |
+| `DeleteModal.tsx` | 删除确认 | 模态框覆盖层，显示项目名称 |
 
 ### 9.2 导航状态机
 
@@ -561,6 +579,14 @@ AI 角色: **舞台剧编剧**
 | 画面描述 | `[画面: ...]` | 浅靛蓝斜体 |
 | 对白 | `角色名：内容` | 粗体名字 + 正文 |
 | 动作指示 | `[动作]` | 小号灰色 |
+| **质量高亮** | `highlightLines` prop | 黄色渐变背景 + 橙色左边框 (`.highlight-warn`) |
+
+**highlightLines 机制**：
+- `ScriptViewer` 接受可选 `highlightLines?: Set<number>`（0-based 行号集合）
+- 高亮行叠加 `.highlight-warn` CSS class，与原有语法高亮样式共存
+- 每行添加 `id="script-line-N"` 用于 `scrollIntoView` 定位
+- 点击质量警告横幅的警告项可平滑滚动到第一个高亮行
+- 剧本视图和原文视图各自有独立的 `highlightSet`，分析逻辑不同
 
 ---
 
@@ -613,6 +639,9 @@ AI 角色: **舞台剧编剧**
 - ✅ 错误诊断完整链路（日志 → API → 前端展示）
 - ✅ 防章节跳转（useRef 初始加载守卫）
 - ✅ 假进度修复（仅循环处理中状态，完成由后端确认）
+- ✅ **Adaptation 表多风格独立存储** — 每章 × 每风格独立记录，切换风格不覆盖
+- ✅ **质量检查问题高亮** — 剧本视图中黄色左边框高亮问题行，点击警告项 scrollIntoView 定位
+- ✅ **原文质量高亮** — 独立分析逻辑（长段落 + 角色对话句），在原文视图中标出
 
 ---
 

@@ -1,6 +1,6 @@
 # AI 小说转剧本工具 — 信息架构设计 (IA)
 
-> **日期**: 2026-06-06 | **方法**: information-architecture (导航地图 → 领域模型 → 页面树 → 数据流 → API 表面) | **更新**: 2026-06-06 (同步实现状态)
+> **日期**: 2026-06-06 | **方法**: information-architecture (导航地图 → 领域模型 → 页面树 → 数据流 → API 表面) | **更新**: 2026-06-06 (同步 Adaptation 表 + 质量高亮)
 >
 > **输入来源**: [solution-design](solution-design.md)（方案范围） + [product-requirements](product-requirements.md)（用户画像/场景） + [implementation-plan](implementation-plan.md)（MVP 边界）
 >
@@ -69,6 +69,7 @@ flowchart TD
 erDiagram
     Project ||--o{ Chapter : "包含"
     Project ||--o{ Character : "拥有"
+    Chapter ||--o{ Adaptation : "多风格改编"
 
     Project {
         string id PK "UUID"
@@ -78,7 +79,7 @@ erDiagram
         string original_filename "原始上传文件名"
         string file_path "服务器存储路径（可空）"
         enum status "UPLOADED→PARSING→PARSED→ADAPTING→COMPLETED→FAILED"
-        string style "film / comic / stage（默认 film）"
+        string style "film / comic / stage（当前选择，默认 film）"
         int total_chapters "总章节数"
         json metadata "扩展元数据"
         datetime created_at
@@ -91,14 +92,26 @@ erDiagram
         int chapter_num "章序号（从 1 开始）"
         string title "章节标题（可空）"
         text original_text "原文内容（API 已暴露）"
-        text script_text "AI 改编后的剧本文本（可空）"
-        🔧 text chapter_summary "🆕 本章摘要（单章独立，可空）"
-        🔧 text cumulative_summary "🆕 累积摘要（第1章～本章，可空）"
-        json scenes "场景切分数据（可空）"
-        json characters "本章出场角色（可空）"
-        🔧 text warnings "🆕 质量检查警告信息（可空）"
+        text script_text "🚫 遗留字段（向后兼容，新代码不读写）"
+        text chapter_summary "🆕 本章摘要（计划中，可空）"
+        text cumulative_summary "🆕 累积摘要（计划中，可空）"
+        json scenes "🚫 遗留字段"
+        json characters "🚫 遗留字段"
+        enum status "🚫 遗留字段（以 Adaptation.status 为准）"
+        text error_message "🚫 遗留字段"
+        datetime created_at
+        datetime updated_at
+    }
+
+    Adaptation {
+        string id PK "UUID"
+        string chapter_id FK "→ chapters.id (CASCADE)"
+        string style "film / comic / stage"
+        text script_text "该风格的剧本文本"
         enum status "PENDING→ADAPTING→COMPLETED→FAILED"
         text error_message "失败错误信息（可空）"
+        json scenes "场景切分数据（可空）"
+        json characters "本章出场角色（可空）"
         datetime created_at
         datetime updated_at
     }
@@ -135,10 +148,11 @@ Chapter 状态流转：
 
 | 实体 | 变更类型 | 字段 | 说明 |
 |------|---------|------|------|
-| `Chapter` | 🔧 修改 | `chapter_summary: Text?` | 🆕 本章摘要 |
-| `Chapter` | 🔧 修改 | `cumulative_summary: Text?` | 🆕 累积摘要 |
-| `Chapter` | 🔧 修改 | `warnings: Text?` | 🆕 质量检查警告 |
-| `Character` | ✅ 不变 | — | 现有字段完整，仅需接线使用 |
+| `Adaptation` | 🆕 新增 | 完整表 | 多风格独立改编存储，UNIQUE(chapter_id, style) |
+| `Chapter` | 🔧 修改 | `chapter_summary: Text?` | 🆕 本章摘要（计划中） |
+| `Chapter` | 🔧 修改 | `cumulative_summary: Text?` | 🆕 累积摘要（计划中） |
+| `Chapter` | 🚫 遗留 | `script_text / status / error_message / scenes / characters` | 向后兼容，新代码读写 Adaptation 表 |
+| `Character` | ✅ 不变 | — | 现有字段完整 |
 | `Project` | ✅ 不变 | — | 现有字段完整 |
 
 ---
@@ -194,7 +208,8 @@ App.tsx（根路由 — 状态机：page + selectedProjectId）
         │   ├─ 元数据高亮 「时间/地点/人物」 (已有)
         │   ├─ 舞台指示高亮 【...】 (已有)
         │   ├─ 对白高亮 「角色名：...」 (已有)
-        │   └─ 画面/动作指示 (已有)
+        │   ├─ 画面/动作指示 (已有)
+        │   └─ 🔧 highlightLines 质量高亮（黄色左边框 + scrollIntoView 定位）
         ├─ 空状态引导（未改编时）(已有)
         ├─ ✅ 失败状态提示 + 错误信息深色代码块
         └─ ✅ Toast 通知（改编完成/失败/风格切换）
@@ -220,7 +235,7 @@ App.tsx（根路由 — 状态机：page + selectedProjectId）
 | `ProjectList.tsx` | ✅ 已实现 | 加载示例按钮 + 空状态 + 删除模态框 |
 | `UploadNovel.tsx` | ✅ 不变 | 拖拽上传已完整 |
 | `ProjectDetail.tsx` | ✅ 已实现 | 风格切换 UI + 进度阶段动画 + 时间计数 + 原文/剧本切换 + 质量 Warning + 错误信息展示 + useRef 防跳章 |
-| `ScriptViewer.tsx` | ✅ 不变 | 6 类高亮已完整 |
+| `ScriptViewer.tsx` | ✅ 已实现 | 6 类语法高亮 + highlightLines 质量高亮 + 原文/剧本双模式 |
 | `client.ts` | ✅ 已实现 | demo API + 风格更新 API + original_text 字段 |
 | `shared/Toast.tsx` | 🆕 已实现 | Toast 通知系统 |
 | `shared/DeleteModal.tsx` | 🆕 已实现 | 删除确认模态框 |
@@ -340,7 +355,8 @@ GET /api/projects/{id}/export/{format}
 | 存储层 | 路径/表 | 内容 | 生命周期 |
 |--------|---------|------|---------|
 | SQLite | `projects` | 项目元数据 | 永久（用户手动删除） |
-| SQLite | `chapters` | 原文 + 剧本 + 摘要 | 随项目删除级联 |
+| SQLite | `chapters` | 原文 + 摘要（计划中） | 随项目删除级联 |
+| SQLite | `adaptations` | 多风格剧本（film/comic/stage × 每章） | 随项目删除级联 |
 | SQLite | `characters` | 角色档案 | 随项目删除级联 |
 | File System | `./data/uploads/` | 原始上传文件 | 与项目同生命周期 |
 | File System | `./data/outputs/` | 导出缓存（当前未使用） | — |
@@ -489,9 +505,11 @@ GET /api/projects/{id}/export/{format}
 
 | 端点 | 新增返回字段 | 来源 |
 |------|------------|------|
-| `GET /api/projects/{id}` → `chapters[]` | `chapter_summary: string?` | `Chapter.chapter_summary` |
-| `GET /api/projects/{id}` → `chapters[]` | `cumulative_summary: string?` | `Chapter.cumulative_summary` |
-| `GET /api/projects/{id}` → `chapters[]` | `warnings: string?` | `Chapter.warnings` |
+| `GET /api/projects/{id}` → `chapters[]` | `adaptations: { style: AdaptationInfo }` | `Chapter.adaptations` (多风格独立存储) |
+| `GET /api/projects/{id}` → `chapters[]` | `script_text: string?` | 遗留字段（向后兼容，值为 film 风格的 adaptation.script_text） |
+| `GET /api/projects/{id}` → `chapters[]` | `status: string` | 遗留字段（向后兼容） |
+| `GET /api/projects/{id}` → `chapters[]` | `chapter_summary: string?` | `Chapter.chapter_summary`（计划中） |
+| `GET /api/projects/{id}` → `chapters[]` | `cumulative_summary: string?` | `Chapter.cumulative_summary`（计划中） |
 
 ---
 
@@ -503,7 +521,7 @@ GET /api/projects/{id}/export/{format}
 backend/
 ├── app/core/config.py             ✅ 已修改: DEEPSEEK_API_KEY + DEEPSEEK_MODEL
 ├── app/core/database.py           ✅ 已修改: +SyncSessionLocal (sync engine)
-├── app/models/__init__.py         🔧 待修改: Chapter 表 +3 字段 (summary/warnings)
+├── app/models/__init__.py         ✅ 已实现: Project + Chapter + Character + Adaptation (新增)
 ├── app/services/ai_adapter.py     ✅ 已修改: +DeepSeek (_call_deepseek + adapt_chapter_sync) +thinking disabled
 ├── app/api/upload.py              🔧 待修改: +extract_characters BackgroundTask
 ├── app/api/chapters.py            ✅ 已修改: asyncio.create_task + asyncio.to_thread + SyncSessionLocal + error_message + logging
@@ -516,8 +534,8 @@ backend/
 frontend/
 ├── src/api/client.ts              ✅ 已修改: +loadDemo() +updateStyle() +original_text +error_message
 ├── src/components/ProjectList.tsx  ✅ 已修改: +加载示例按钮 +空状态 +删除模态框
-├── src/components/ProjectDetail.tsx✅ 已修改: +风格切换 +进度动画 +时间计数 +原文/剧本切换 +warning横幅 +error展示 +useRef防跳章
-├── src/components/ScriptViewer.tsx ✅ 不变
+├── src/components/ProjectDetail.tsx✅ 已修改: +风格切换 +进度动画 +时间计数 +原文/剧本切换 +warning横幅(可点击定位) +error展示 +useRef防跳章 +原文独立高亮分析
+├── src/components/ScriptViewer.tsx ✅ 已修改: +highlightLines prop +scrollIntoView定位
 └── src/components/shared/         🆕 新增: Toast.tsx + DeleteModal.tsx
 ```
 
