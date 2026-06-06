@@ -65,6 +65,7 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
                 "script_text": c.script_text,
                 "scenes": c.scenes,
                 "characters": c.characters_in_chapter,
+                "error_message": c.error_message,
             }
             for c in sorted(project.chapters, key=lambda c: c.chapter_num)
         ],

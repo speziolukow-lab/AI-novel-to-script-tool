@@ -278,6 +278,46 @@ class AIAdapter:
 
         return response.choices[0].message.content or ""
 
+    # ── Sync methods (for background threads) ────────────────────
+
+    def adapt_chapter_sync(
+        self,
+        chapter_text: str,
+        style: str = "film",
+        character_context: str | None = None,
+        previous_scene_context: str | None = None,
+    ) -> str:
+        """Synchronous version of adapt_chapter for use in thread pools."""
+        from openai import OpenAI
+
+        system_prompt = STYLE_PROMPTS.get(style, SYSTEM_PROMPT_FILM)
+
+        user_lines = []
+        if character_context:
+            user_lines.append(f"## 已知人物信息\n{character_context}\n")
+        if previous_scene_context:
+            user_lines.append(f"## 上一场结尾\n{previous_scene_context}\n")
+        user_lines.append(f"## 需要改编的小说片段\n\n{chapter_text}")
+        user_message = "\n".join(user_lines)
+
+        client = OpenAI(
+            api_key=settings.DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com/v1",
+        )
+
+        response = client.chat.completions.create(
+            model=settings.DEEPSEEK_MODEL,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=settings.LLM_TEMPERATURE,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+
+        return response.choices[0].message.content or ""
+
     # ── Helpers ────────────────────────────────────────────────
 
     @staticmethod

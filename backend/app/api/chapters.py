@@ -1,7 +1,8 @@
 """Chapters API — trigger AI adaptation for individual chapters."""
 
+import asyncio
 import logging
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +21,6 @@ router = APIRouter()
 @router.post("/chapters/{chapter_id}/adapt")
 async def adapt_chapter(
     chapter_id: str,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -46,12 +46,15 @@ async def adapt_chapter(
     chapter.project.status = ProjectStatus.ADAPTING
     await db.commit()
 
-    # Run adaptation in background
-    background_tasks.add_task(
-        _run_adaptation,
-        chapter_id=chapter.id,
-        project_id=chapter.project.id,
-        style=chapter.project.style,
+    # Run adaptation in background (use asyncio.create_task instead of
+    # BackgroundTasks to preserve the async greenlet context required by
+    # SQLAlchemy's async engine).
+    asyncio.create_task(
+        _run_adaptation(
+            chapter_id=chapter.id,
+            project_id=chapter.project.id,
+            style=chapter.project.style,
+        )
     )
 
     return {
@@ -64,7 +67,6 @@ async def adapt_chapter(
 @router.post("/projects/{project_id}/adapt-all")
 async def adapt_all_chapters(
     project_id: str,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger adaptation for all chapters in a project."""
@@ -93,11 +95,12 @@ async def adapt_all_chapters(
     await db.commit()
 
     for chapter in pending_chapters:
-        background_tasks.add_task(
-            _run_adaptation,
-            chapter_id=chapter.id,
-            project_id=project.id,
-            style=project.style,
+        asyncio.create_task(
+            _run_adaptation(
+                chapter_id=chapter.id,
+                project_id=project.id,
+                style=project.style,
+            )
         )
 
     return {
@@ -115,91 +118,121 @@ async def _run_adaptation(
     """
     Background task: run AI adaptation on a chapter.
 
-    Handles chapter splitting, character context, and updating the DB.
+    Uses asyncio.to_thread() to avoid SQLAlchemy async greenlet issues
+    with sqlite+aiosqlite in background coroutines.
     """
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import SyncSessionLocal
 
-    async with AsyncSessionLocal() as db:
-        try:
-            # Reload chapter
-            result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
-            chapter = result.scalar_one_or_none()
-            if not chapter:
-                return
-
-            # Reload project for character context
-            result = await db.execute(
-                select(Project)
-                .where(Project.id == project_id)
-                .options(selectinload(Project.characters))
-            )
-            project = result.scalars().unique().first()
-
-            # Build character context
-            character_context = None
-            if project and project.characters:
-                char_lines = [
-                    f"- {c.name}（{''.join(c.traits or [])}）：{c.description or ''}"
-                    for c in project.characters
-                ]
-                character_context = "\n".join(char_lines)
-
-            # Get previous chapter's last scene for continuity
-            prev_context = None
-            if project:
-                prev_chapters = sorted(
-                    [c for c in project.chapters if c.chapter_num < chapter.chapter_num],
-                    key=lambda c: c.chapter_num,
+    def _sync_work() -> None:
+        with SyncSessionLocal() as db:
+            try:
+                # Reload chapter
+                result = db.execute(
+                    select(Chapter).where(Chapter.id == chapter_id)
                 )
-                if prev_chapters and prev_chapters[-1].script_text:
-                    # Take last 500 chars as context
-                    prev_text = prev_chapters[-1].script_text
-                    prev_context = prev_text[-min(500, len(prev_text)):]
+                chapter = result.scalar_one_or_none()
+                if not chapter:
+                    return
 
-            # Split if too long
-            chunks = split_long_chapter(
-                chapter.original_text or "",
-                max_length=settings.MAX_CHAPTER_LENGTH,
-                overlap=settings.CHAPTER_OVERLAP,
-            )
-
-            # Adapt each chunk
-            script_parts = []
-            for i, chunk in enumerate(chunks):
-                script_part = await ai_adapter.adapt_chapter(
-                    chapter_text=chunk,
-                    style=style,
-                    character_context=character_context,
-                    previous_scene_context=prev_context if i == 0 else script_parts[-1][-300:],
+                # Reload project for character context
+                result = db.execute(
+                    select(Project)
+                    .where(Project.id == project_id)
+                    .options(selectinload(Project.characters))
                 )
-                script_parts.append(script_part)
+                project = result.scalars().unique().first()
 
-            full_script = "\n\n".join(script_parts)
+                # Build character context
+                character_context = None
+                if project and project.characters:
+                    char_lines = [
+                        f"- {c.name}（{''.join(c.traits or [])}）：{c.description or ''}"
+                        for c in project.characters
+                    ]
+                    character_context = "\n".join(char_lines)
 
-            # Update chapter
-            chapter.script_text = full_script
-            chapter.status = ChapterStatus.COMPLETED
-            await db.commit()
+                # Get previous chapter's last scene for continuity
+                prev_context = None
+                if project:
+                    all_chapters = sorted(
+                        [c for c in project.chapters if c.chapter_num < chapter.chapter_num],
+                        key=lambda c: c.chapter_num,
+                    )
+                    if all_chapters and all_chapters[-1].script_text:
+                        prev_text = all_chapters[-1].script_text
+                        prev_context = prev_text[-min(500, len(prev_text)):]
 
-            # Check if all chapters done, update project
-            await _maybe_complete_project(db, project_id)
+                # Split if too long
+                chunks = split_long_chapter(
+                    chapter.original_text or "",
+                    max_length=settings.MAX_CHAPTER_LENGTH,
+                    overlap=settings.CHAPTER_OVERLAP,
+                )
 
-        except Exception as e:
-            logger.exception(f"Chapter adaptation failed: chapter_id={chapter_id}")
-            # Mark as failed
-            result = await db.execute(select(Chapter).where(Chapter.id == chapter_id))
-            chapter = result.scalar_one_or_none()
-            if chapter:
-                chapter.status = ChapterStatus.FAILED
-                chapter.error_message = str(e)
-                await db.commit()
+                # Adapt each chunk (sync)
+                script_parts = []
+                for i, chunk in enumerate(chunks):
+                    script_part = ai_adapter.adapt_chapter_sync(
+                        chapter_text=chunk,
+                        style=style,
+                        character_context=character_context,
+                        previous_scene_context=prev_context if i == 0 else script_parts[-1][-300:],
+                    )
+                    script_parts.append(script_part)
 
-            # Update project status
-            result = await db.execute(select(Project).where(Project.id == project_id))
-            project = result.scalar_one_or_none()
-            if project:
-                project.status = ProjectStatus.FAILED
-                await db.commit()
+                full_script = "\n\n".join(script_parts)
+
+                # Update chapter
+                chapter.script_text = full_script
+                chapter.status = ChapterStatus.COMPLETED
+                db.commit()
+
+                # Check if all chapters done, update project
+                _maybe_complete_project_sync(db, project_id)
+
+            except Exception as e:
+                logger.exception(f"Chapter adaptation failed: chapter_id={chapter_id}")
+                try:
+                    # Mark as failed
+                    result = db.execute(select(Chapter).where(Chapter.id == chapter_id))
+                    chapter = result.scalar_one_or_none()
+                    if chapter:
+                        chapter.status = ChapterStatus.FAILED
+                        chapter.error_message = str(e)
+                        db.commit()
+
+                    # Update project status
+                    result = db.execute(select(Project).where(Project.id == project_id))
+                    project = result.scalar_one_or_none()
+                    if project:
+                        project.status = ProjectStatus.FAILED
+                        db.commit()
+                except Exception:
+                    logger.exception("Failed to save error state")
+
+    await asyncio.to_thread(_sync_work)
+
+
+def _maybe_complete_project_sync(db, project_id: str):
+    """Sync version: check if all chapters done, update project status."""
+    result = db.execute(
+        select(Project)
+        .where(Project.id == project_id)
+        .options(selectinload(Project.chapters))
+    )
+    project = result.scalars().unique().first()
+    if not project:
+        return
+
+    all_done = all(
+        c.status in (ChapterStatus.COMPLETED, ChapterStatus.FAILED)
+        for c in project.chapters
+    )
+    any_completed = any(c.status == ChapterStatus.COMPLETED for c in project.chapters)
+
+    if all_done:
+        project.status = ProjectStatus.COMPLETED if any_completed else ProjectStatus.FAILED
+        db.commit()
 
 
 async def _maybe_complete_project(db: AsyncSession, project_id: str):
