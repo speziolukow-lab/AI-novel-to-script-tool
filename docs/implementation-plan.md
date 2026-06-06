@@ -4,7 +4,7 @@
 
 ## Context
 
-项目 `AI-novel-to-script-tool` 已有完整的前后端脚手架：FastAPI 后端（上传/解析/AI改编/导出）+ React 前端（项目列表/上传/剧本阅读器）+ 3 个 LLM 适配器（Anthropic/OpenAI/Qwen）。目标是快速打造一个能**端到端演示**的 Demo。
+项目 `AI-novel-to-script-tool` 已有完整的前后端脚手架：FastAPI 后端（上传/解析/AI改编/导出）+ React 前端（项目列表/上传/剧本阅读器）+ 4 个 LLM 适配器（Anthropic/OpenAI/Qwen/DeepSeek）。目标是快速打造一个能**端到端演示**的 Demo。
 
 **已完成超出原计划的新增功能**：
 - ✅ Adaptation 表 — 多风格独立改编存储
@@ -160,19 +160,24 @@ npm run dev      # → localhost:5173，/api 代理到 localhost:8000
 
 ## 关键文件清单
 
-| 文件 | 改动类型 |
-|------|----------|
-| `backend/.env` | 新建（从 .env.example 复制） |
-| `backend/app/core/config.py` | 修改：新增 DeepSeek 配置 |
-| `backend/.env.example` | 修改：新增 DeepSeek 配置项 |
-| `backend/app/models/models.py` | 修改：Chapter 新增 chapter_summary + cumulative_summary 字段 |
-| `backend/app/services/ai_adapter.py` | 修改：新增 DeepSeek provider + 摘要生成方法 + Prompt 增强 + 结构预分析 + 质量自检 |
-| `backend/app/api/upload.py` | 修改：角色提取后台任务 |
-| `backend/app/api/chapters.py` | 修改：角色上下文 + 摘要链接入改编流水线 |
-| `backend/app/api/demo.py` | 新建：示例小说端点 |
-| `frontend/src/components/ProjectDetail.tsx` | 修改：进度展示 + 风格切换 |
-| `frontend/src/components/ProjectList.tsx` | 修改：示例小说按钮 |
-| `frontend/src/api/client.ts` | 修改：新增 demo API 调用 |
+| 文件 | 改动类型 | 状态 |
+|------|----------|------|
+| `backend/.env` | 新建（从 .env.example 复制） | ✅ |
+| `backend/app/core/config.py` | 修改：新增 DeepSeek 配置 | ✅ |
+| `backend/.env.example` | 修改：新增 DeepSeek 配置项 | ✅ |
+| `backend/app/core/database.py` | 修改：新增 SyncSessionLocal (sync engine) | ✅ |
+| `backend/app/models/__init__.py` | 修改：Project + Chapter + Character + Adaptation (新增) | ✅ |
+| `backend/app/services/ai_adapter.py` | 修改：新增 DeepSeek provider + adapt_chapter_sync + thinking disabled | ✅ |
+| `backend/app/api/upload.py` | 待修改：角色提取后台任务 | 🔧 |
+| `backend/app/api/chapters.py` | 修改：asyncio.create_task + asyncio.to_thread + Adaptation 读写 | ✅ |
+| `backend/app/api/projects.py` | 修改：projects API 返回 adaptations + original_text | ✅ |
+| `backend/app/api/demo.py` | 新建：示例小说端点 | ✅ |
+| `frontend/src/components/ProjectDetail.tsx` | 修改：风格切换 + 进度动画 + 原文/剧本对比 + 质量 Warning + 错误展示 | ✅ |
+| `frontend/src/components/ProjectList.tsx` | 修改：示例小说按钮 + 空状态 + 删除模态框 | ✅ |
+| `frontend/src/components/ScriptViewer.tsx` | 修改：highlightLines prop + scrollIntoView + 原文/剧本双模式 | ✅ |
+| `frontend/src/components/shared/` | 新建：Toast.tsx + DeleteModal.tsx | ✅ |
+| `frontend/src/api/client.ts` | 修改：新增 demo/style API 调用 + original_text 字段 | ✅ |
+| `USAGE.md` | 新建：使用文档 | ✅ |
 
 ---
 
@@ -189,8 +194,21 @@ npm run dev      # → localhost:5173，/api 代理到 localhost:8000
 ## 验证方式
 
 1. **启动验证**：后端 `curl localhost:8000/api/health` → `{"status":"ok"}`
-2. **上传验证**：上传测试 TXT → 自动分章 → 角色自动提取
-3. **改编验证**：逐章改编 → 剧本输出格式正确（`第X场` / `【】` / `角色：对白`）
-4. **记忆验证**：改编第3章后检查 Chapter 表 `cumulative_summary` 字段 → 应包含前3章累积摘要；改编第4章时 LLM 收到的 prompt 应包含 `## 前情提要` 段落
-5. **导出验证**：下载 MD / TXT / DOCX → 内容完整
-6. **示例验证**：点击"加载示例" → 无需上传文件即可体验全流程
+2. **上传验证**：上传测试 TXT → 自动分章 → 章节列表正确
+3. **示例验证**：点击"加载示例" → 无需上传文件即可体验全流程
+4. **改编验证**：逐章改编 → 剧本输出格式正确（`第X场` / `【】` / `角色：对白`）
+5. **风格切换验证**：改编影视 → 切换漫画 → 显示未改编 → 切回影视 → 之前内容仍在
+6. **质量检查验证**：改编含格式问题的章节 → Warning 横幅显示 → 点击跳转定位
+7. **原文对比验证**：已改编章节 → 点击「原文」→ 显示原始小说文本
+8. **导出验证**：下载 MD / TXT / DOCX → 内容完整
+9. **记忆验证**（🔧 待实现）：改编第3章后检查 Chapter 表 `cumulative_summary` 字段
+
+---
+
+## 关联文档
+
+| 文档 | 用途 |
+|------|------|
+| [product-requirements.md](product-requirements.md) | 产品需求文档 |
+| [technical-architecture.md](technical-architecture.md) | 技术架构详情 |
+| [../USAGE.md](../USAGE.md) | 使用文档 |

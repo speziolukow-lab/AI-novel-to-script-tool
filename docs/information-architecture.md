@@ -582,3 +582,13 @@ user-persona          solution-design      requirement-prioritization
 ---
 
 **文档生成日期**: 2026-06-06 | **基于 skill**: information-architecture (思源笔记: `product-skills/information-architecture`)
+
+## 关联文档
+
+| 文档 | 用途 |
+|------|------|
+| [product-requirements.md](product-requirements.md) | 产品需求文档 |
+| [solution-design.md](solution-design.md) | 方案设计 |
+| [technical-architecture.md](technical-architecture.md) | 技术架构详情 |
+| [implementation-plan.md](implementation-plan.md) | 实施计划 |
+| [../USAGE.md](../USAGE.md) | 使用文档 |

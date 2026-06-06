@@ -471,3 +471,13 @@
 ---
 
 **文档生成日期**: 2026-06-06 | **基于 skill**: [solution-design](思源笔记: product-skills/solution-design)
+
+## 关联文档
+
+| 文档 | 用途 |
+|------|------|
+| [product-requirements.md](product-requirements.md) | 产品需求文档 |
+| [technical-architecture.md](technical-architecture.md) | 技术架构详情 |
+| [information-architecture.md](information-architecture.md) | 信息架构设计 |
+| [implementation-plan.md](implementation-plan.md) | 实施计划 |
+| [../USAGE.md](../USAGE.md) | 使用文档 |

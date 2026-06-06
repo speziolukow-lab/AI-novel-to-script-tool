@@ -384,6 +384,7 @@
 | [implementation-plan.md](implementation-plan.md) | 实施计划与验证方式 |
 | [solution-design.md](solution-design.md) | 方案设计（16 方案卡） |
 | [competitive-analysis.md](competitive-analysis.md) | 竞品技术分析（15+ 产品） |
+| [USAGE.md](../USAGE.md) | 使用文档 — 启动/配置/使用流程 |
 
 ---
 

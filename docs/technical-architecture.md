@@ -112,7 +112,7 @@ AI-novel-to-script-tool/
 │       │   ├── config.py          # Pydantic Settings (env → 配置对象)
 │       │   └── database.py        # 异步引擎 + Session + init_db()
 │       ├── models/
-│       │   └── models.py          # ORM: Project, Chapter, Character
+│       │   └── __init__.py         # ORM: Project, Chapter, Character, Adaptation
 │       ├── api/
 │       │   ├── upload.py          # POST /api/upload
 │       │   ├── projects.py        # GET/DELETE /api/projects[/{id}]
@@ -613,8 +613,8 @@ AI 角色: **舞台剧编剧**
 - **双数据库引擎**: async SQLAlchemy (aiosqlite) 用于 API 请求 + sync SQLAlchemy (sqlite) 用于后台线程
 - **后台任务**: `asyncio.create_task()` + `asyncio.to_thread()` 执行改编，避免 BackgroundTasks 的 greenlet 冲突
 - **轮询而非推送**: 前端 2-3 秒 polling 检测改编完成，非 WebSocket/SSE
-- **多 LLM Provider**: Anthropic / OpenAI / Qwen / DeepSeek 四 Provider 可切换
-- **DeepSeek-V4-Pro**: 默认 Provider，成本 ~¥0.002/章，通过 `extra_body` 禁用思维链
+- **多 LLM Provider**: Anthropic / OpenAI / Qwen / DeepSeek 四 Provider 可切换（异步 `adapt_chapter`）；同步方法 `adapt_chapter_sync` 硬编码为 DeepSeek（后台线程专用）
+- **DeepSeek-V4-Pro**: 默认 Provider，成本 ~¥0.002/章，通过 `extra_body={"thinking": {"type": "disabled"}}` 禁用思维链
 - **错误诊断**: `logging.basicConfig()` + `logger.exception()` 完整 traceback + `error_message` 前端展示
 - **单例 AIAdapter**: 全局共享同一个 provider 配置
 - **中文优先**: 所有 API 错误消息、UI 标签、提示词均为中文
@@ -646,6 +646,8 @@ AI 角色: **舞台剧编剧**
 ---
 
 ## 12. 快速启动
+
+详细使用说明请参阅 [USAGE.md](../USAGE.md)。
 
 ### 后端
 ```bash
