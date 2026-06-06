@@ -208,52 +208,48 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     status: "pending",
     script_text: null,
     error_message: null,
+    scenes: null,
   } as AdaptationInfo;
   const activeWarnings = activeAdaptation.script_text ? checkQuality(activeAdaptation) : [];
   const scriptHighlightSet = new Set(activeWarnings.flatMap((w) => w.lines));
 
-  // ── Original‑text highlight set ──
-  // Finds lines in the original novel text that are likely related to
-  // the quality warnings (e.g. character‑name mentions, very long paragraphs).
+  // ── Original‑text highlight set (alignment‑based) ──
+  // Uses AI-generated alignment data to map script quality warnings
+  // back to the original text paragraphs that produced them.
   const originalHighlightSet = (() => {
     const set = new Set<number>();
     if (!activeChapter?.original_text) return set;
 
+    const alignment = activeAdaptation.scenes?.alignment;
+    if (!alignment || alignment.length === 0) return set;
+
+    const scriptLines = activeAdaptation.script_text?.split("\n") ?? [];
     const origLines = activeChapter.original_text.split("\n");
 
-    // 1. Long paragraphs that may be hard for the AI to process
-    origLines.forEach((line, idx) => {
-      if (line.length > 500) set.add(idx);
-    });
+    // Build line→scene map: for each script line, determine which scene it belongs to
+    const lineToScene = new Map<number, number>();
+    let currentScene = -1;
+    for (let i = 0; i < scriptLines.length; i++) {
+      const m = scriptLines[i].match(/^第\s*(\d+)\s*[场格幕帧镜页]/);
+      if (m) {
+        currentScene = parseInt(m[1], 10);
+      }
+      if (currentScene >= 0) {
+        lineToScene.set(i, currentScene);
+      }
+    }
 
-    // 2. For script-dialogue warnings, highlight original lines that
-    //    mention the same character names (Chinese novel dialogue markers).
-    const dialogueWarnings = activeWarnings.filter(
-      (w) => w.lines.length > 0 && w.message.includes("角色名")
-    );
-    if (dialogueWarnings.length > 0 && activeAdaptation.script_text) {
-      // Collect character names from the flagged script lines
-      const scriptLines = activeAdaptation.script_text.split("\n");
-      const charNames = new Set<string>();
-      for (const w of dialogueWarnings) {
-        for (const li of w.lines) {
-          const sLine = scriptLines[li] || "";
-          const m = sLine.match(/^(\S+?)[：:]/);
-          if (m) charNames.add(m[1]);
+    // For each quality warning line, find its scene → corresponding original paragraphs
+    for (const warning of activeWarnings) {
+      for (const warnLine of warning.lines) {
+        const scene = lineToScene.get(warnLine);
+        if (scene === undefined) continue;
+        const align = alignment.find((a) => a.scene === scene);
+        if (!align) continue;
+        for (let p = align.para_start; p <= align.para_end && p < origLines.length; p++) {
+          set.add(p);
         }
       }
-      // Find original lines mentioning those characters in dialogue context
-      origLines.forEach((line, idx) => {
-        for (const name of charNames) {
-          if (
-            line.includes(name) &&
-            /[说道喊问叫骂喊叹喝嚷]/.test(line)
-          ) {
-            set.add(idx);
-            break;
-          }
-        }
-      });
     }
 
     return set;
@@ -261,7 +257,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
 
   // Helper: get adaptation for a chapter + current style
   const getAdaptation = (ch: ChapterInfo): AdaptationInfo =>
-    ch.adaptations?.[style] ?? { status: "pending", script_text: null, error_message: null };
+    ch.adaptations?.[style] ?? { status: "pending", script_text: null, error_message: null, scenes: null };
 
   // Loading
   if (loading) {

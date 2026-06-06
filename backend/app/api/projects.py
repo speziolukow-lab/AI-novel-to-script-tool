@@ -86,12 +86,13 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
                                 "status": a.status.value,
                                 "script_text": a.script_text,
                                 "error_message": a.error_message,
+                                "scenes": a.scenes,
                             }
                             for a in (c.adaptations or [])
                             if a.style == s
                         ),
                         # Default empty state for un-adapted styles
-                        {"status": "pending", "script_text": None, "error_message": None},
+                        {"status": "pending", "script_text": None, "error_message": None, "scenes": None},
                     )
                     for s in ALL_STYLES
                 },

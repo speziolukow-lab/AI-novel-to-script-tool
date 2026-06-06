@@ -15,10 +15,23 @@ export interface ProjectSummary {
   created_at: string;
 }
 
+export interface AlignmentEntry {
+  scene: number;
+  para_start: number;
+  para_end: number;
+}
+
+export interface AlignmentData {
+  alignment: AlignmentEntry[];
+  total_paras: number;
+  version: number;
+}
+
 export interface AdaptationInfo {
   status: string;
   script_text: string | null;
   error_message: string | null;
+  scenes: AlignmentData | null;
 }
 
 export interface ChapterInfo {

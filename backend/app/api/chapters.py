@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.models import Project, Chapter, ChapterStatus, ProjectStatus, Adaptation
 from app.services.ai_adapter import ai_adapter
 from app.services.text_parser import split_long_chapter
+from app.services.text_utils import number_paragraphs
 from app.core.config import settings
 
 router = APIRouter()
@@ -215,28 +216,57 @@ async def _run_adaptation(
                             prev_context = prev_text[-min(500, len(prev_text)):]
                             break
 
-                # Split if too long
-                chunks = split_long_chapter(
-                    chapter.original_text or "",
-                    max_length=settings.MAX_CHAPTER_LENGTH,
-                    overlap=settings.CHAPTER_OVERLAP,
+                # Number paragraphs globally for alignment tracking
+                numbered_text, total_paras = number_paragraphs(
+                    chapter.original_text or ""
                 )
 
-                # Adapt each chunk (sync)
-                script_parts = []
-                for i, chunk in enumerate(chunks):
-                    script_part = ai_adapter.adapt_chapter_sync(
-                        chapter_text=chunk,
+                # Split into chunks (paragraph-level overlap)
+                chunks = split_long_chapter(
+                    numbered_text,
+                    max_length=settings.MAX_CHAPTER_LENGTH,
+                    overlap_paras=3,
+                )
+
+                # Adapt each chunk with alignment
+                script_parts: list[str] = []
+                all_alignment: list[dict] = []
+                cumulative_scenes = 0
+
+                for i, chunk_info in enumerate(chunks):
+                    chunk_text = chunk_info["text"]
+
+                    prev = (
+                        prev_context if i == 0
+                        else script_parts[-1][-300:]
+                    )
+
+                    cleaned, chunk_alignment = ai_adapter.adapt_chapter_sync_with_alignment(
+                        chapter_text=chunk_text,
                         style=style,
                         character_context=character_context,
-                        previous_scene_context=prev_context if i == 0 else script_parts[-1][-300:],
+                        previous_scene_context=prev,
                     )
-                    script_parts.append(script_part)
+
+                    # Remap scene numbers: chunk-local → global
+                    for entry in chunk_alignment:
+                        entry["scene"] += cumulative_scenes
+
+                    if chunk_alignment:
+                        cumulative_scenes = max(e["scene"] for e in chunk_alignment)
+
+                    all_alignment.extend(chunk_alignment)
+                    script_parts.append(cleaned)
 
                 full_script = "\n\n".join(script_parts)
 
                 # Update adaptation record
                 adaptation.script_text = full_script
+                adaptation.scenes = {
+                    "alignment": all_alignment,
+                    "total_paras": total_paras,
+                    "version": 1,
+                }
                 adaptation.status = ChapterStatus.COMPLETED
                 # Also update chapter for backward compatibility
                 chapter.script_text = full_script

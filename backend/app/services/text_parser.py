@@ -112,36 +112,86 @@ def parse_novel_text(text: str) -> tuple[str | None, str | None, list[ChapterInf
 
 
 def split_long_chapter(
-    content: str, max_length: int = 8000, overlap: int = 200
-) -> list[str]:
+    content: str, max_length: int = 8000, overlap_paras: int = 3
+) -> list[dict]:
     """
     Split an overlong chapter into overlapping chunks for LLM processing.
-    Tries to break at natural paragraph boundaries.
+
+    Unlike the original character-based overlap, this version keeps whole
+    paragraphs in the overlap zone, preserving paragraph boundaries.
+    Returns dicts with text and para_offset for alignment tracking.
+
+    Args:
+        content: Text with optional [¶N] paragraph markers.
+        max_length: Maximum chars per chunk.
+        overlap_paras: Number of non-empty paragraphs to overlap between chunks.
+
+    Returns:
+        List of dicts: {"text": str, "para_offset": int}
+        para_offset is the global paragraph number of the first numbered
+        paragraph in this chunk (extracted from [¶N] markers).
     """
     if len(content) <= max_length:
-        return [content]
+        # Extract first paragraph number for offset
+        first_match = re.search(r"\[¶(\d+)\]", content)
+        return [{"text": content, "para_offset": int(first_match.group(1)) if first_match else 0}]
 
-    paragraphs = content.split("\n")
-    chunks: list[str] = []
+    lines = content.split("\n")
+    chunks: list[dict] = []
     current: list[str] = []
     current_len = 0
+    # Track indices of non-empty lines in current for overlap extraction
+    non_empty_indices: list[int] = []
 
-    for para in paragraphs:
-        para_len = len(para) + 1  # +1 for newline
+    for i, line in enumerate(lines):
+        para_len = len(line) + 1  # +1 for newline
+
         if current_len + para_len > max_length and current:
-            chunks.append("\n".join(current))
-            # Keep last `overlap` chars for context
-            if overlap > 0:
-                tail = chunks[-1][-overlap:]
-                current = [tail] if tail else []
-                current_len = len(tail)
+            # Save current chunk
+            first_para = _first_para_num(current)
+            chunks.append({
+                "text": "\n".join(current),
+                "para_offset": first_para,
+            })
+
+            # Overlap: keep last `overlap_paras` non-empty paragraphs
+            if overlap_paras > 0 and non_empty_indices:
+                keep_from = max(0, len(non_empty_indices) - overlap_paras)
+                overlap_line_indices = non_empty_indices[keep_from:]
+                if overlap_line_indices:
+                    start_idx = overlap_line_indices[0]
+                    current = current[start_idx:]
+                    current_len = sum(len(ln) + 1 for ln in current)
+                    non_empty_indices = [
+                        j for j, ln in enumerate(current) if ln.strip()
+                    ]
+                else:
+                    current = []
+                    current_len = 0
+                    non_empty_indices = []
             else:
                 current = []
                 current_len = 0
-        current.append(para)
+                non_empty_indices = []
+
+        current.append(line)
         current_len += para_len
+        if line.strip():
+            non_empty_indices.append(len(current) - 1)
 
     if current:
-        chunks.append("\n".join(current))
+        chunks.append({
+            "text": "\n".join(current),
+            "para_offset": _first_para_num(current),
+        })
 
     return chunks
+
+
+def _first_para_num(lines: list[str]) -> int:
+    """Extract the first [¶N] paragraph number from a list of lines."""
+    for line in lines:
+        m = re.match(r"\[¶(\d+)\]", line)
+        if m:
+            return int(m.group(1))
+    return 0

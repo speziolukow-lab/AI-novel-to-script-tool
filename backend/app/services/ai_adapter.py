@@ -98,6 +98,35 @@ STYLE_PROMPTS = {
     "stage": SYSTEM_PROMPT_STAGE,
 }
 
+# ── Alignment Instruction ──────────────────────────────────────
+
+ALIGNMENT_INSTRUCTION = """
+## 原著段落对应
+
+原著的每个自然段前面都标注了 `[¶数字]` 格式的编号（如 `[¶0]`、`[¶1]`），表示段落编号。
+
+剧本输出完成后，**另起一行**，按以下格式输出改编对应关系：
+
+¶ALIGN¶
+S1:0-3
+S2:4-7
+S3:8-15
+¶ENDALIGN¶
+
+格式说明：
+- `S{场次}` 是你输出的剧本场次编号（第1场对应S1、第2场对应S2...）
+- `:{起始段落}-{结束段落}` 表示该场改编自原著哪些段落
+- 段落编号与原文中的 `[¶数字]` 完全对应
+- 每个场次单独一行，必须按照 `S{场次}:{起始}-{结束}` 格式
+- 确保覆盖所有已改编的原著段落，段落范围不要遗漏
+"""
+
+
+def _make_system_prompt_with_alignment(style: str) -> str:
+    """Return the system prompt for a style with alignment instruction appended."""
+    base = STYLE_PROMPTS.get(style, SYSTEM_PROMPT_FILM)
+    return base + ALIGNMENT_INSTRUCTION
+
 
 # ── Character Extraction Prompt ────────────────────────────────
 
@@ -317,6 +346,56 @@ class AIAdapter:
         )
 
         return response.choices[0].message.content or ""
+
+    def adapt_chapter_sync_with_alignment(
+        self,
+        chapter_text: str,
+        style: str = "film",
+        character_context: str | None = None,
+        previous_scene_context: str | None = None,
+    ) -> tuple[str, list[dict]]:
+        """
+        Synchronous adaptation with alignment data extraction.
+
+        Uses the alignment-enhanced system prompt and parses the
+        alignment footer from the LLM response.
+
+        Returns:
+            (cleaned_script_text, alignment_list)
+            alignment_list: [{"scene": 1, "para_start": 0, "para_end": 3}, ...]
+        """
+        from openai import OpenAI
+
+        from app.services.text_utils import parse_alignment_footer
+
+        system_prompt = _make_system_prompt_with_alignment(style)
+
+        user_lines = []
+        if character_context:
+            user_lines.append(f"## 已知人物信息\n{character_context}\n")
+        if previous_scene_context:
+            user_lines.append(f"## 上一场结尾\n{previous_scene_context}\n")
+        user_lines.append(f"## 需要改编的小说片段\n\n{chapter_text}")
+        user_message = "\n".join(user_lines)
+
+        client = OpenAI(
+            api_key=settings.DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com/v1",
+        )
+
+        response = client.chat.completions.create(
+            model=settings.DEEPSEEK_MODEL,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=settings.LLM_TEMPERATURE,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+
+        raw = response.choices[0].message.content or ""
+        return parse_alignment_footer(raw)
 
     # ── Helpers ────────────────────────────────────────────────
 
