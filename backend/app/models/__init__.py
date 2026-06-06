@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, JSON, Enum as SAEnum
+from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, JSON, Enum as SAEnum, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import enum
 
@@ -94,3 +94,38 @@ class Character(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project: Mapped["Project"] = relationship("Project", back_populates="characters")
+
+
+class Adaptation(Base):
+    """Per-style adaptation result for a chapter.
+
+    Each chapter can have independent adaptations for film / comic / stage.
+    """
+
+    __tablename__ = "adaptations"
+    __table_args__ = (
+        UniqueConstraint("chapter_id", "style", name="uq_adaptation_chapter_style"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    chapter_id: Mapped[str] = mapped_column(String(36), ForeignKey("chapters.id", ondelete="CASCADE"))
+    style: Mapped[str] = mapped_column(String(50), default="film")  # film / comic / stage
+    script_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[ChapterStatus] = mapped_column(
+        SAEnum(ChapterStatus), default=ChapterStatus.PENDING
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scenes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    characters_in_chapter: Mapped[dict | None] = mapped_column(JSON, nullable=True, name="characters")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    chapter: Mapped["Chapter"] = relationship("Chapter", back_populates="adaptations")
+
+
+# Add adaptations relationship to Chapter
+Chapter.adaptations: Mapped[list["Adaptation"]] = relationship(
+    "Adaptation", back_populates="chapter", cascade="all, delete-orphan"
+)

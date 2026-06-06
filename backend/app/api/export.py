@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.models import Project
+from app.models import Project, Chapter, Adaptation
 
 router = APIRouter()
 
@@ -22,25 +22,31 @@ async def export_markdown(project_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Project)
         .where(Project.id == project_id)
-        .options(selectinload(Project.chapters))
+        .options(
+            selectinload(Project.chapters).selectinload(Chapter.adaptations),
+        )
     )
     project = result.scalars().unique().first()
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
+
+    style = project.style
 
     # Build markdown content
     lines = []
     lines.append(f"# {project.title}")
     if project.author:
         lines.append(f"\n**原著作者**：{project.author}")
-    lines.append(f"\n**改编风格**：{project.style}")
+    lines.append(f"\n**改编风格**：{style}")
     lines.append(f"\n**生成时间**：{project.updated_at.isoformat() if project.updated_at else ''}")
     lines.append("\n---\n")
 
     for chapter in sorted(project.chapters, key=lambda c: c.chapter_num):
         lines.append(f"## 第{chapter.chapter_num}章 {chapter.title or ''}\n")
-        if chapter.script_text:
-            lines.append(chapter.script_text)
+        # Read from adaptation for current style
+        script = _get_script_for_style(chapter, style)
+        if script:
+            lines.append(script)
         else:
             lines.append("（待改编...）\n")
         lines.append("\n---\n")
@@ -61,11 +67,15 @@ async def export_txt(project_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Project)
         .where(Project.id == project_id)
-        .options(selectinload(Project.chapters))
+        .options(
+            selectinload(Project.chapters).selectinload(Chapter.adaptations),
+        )
     )
     project = result.scalars().unique().first()
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
+
+    style = project.style
 
     lines = []
     lines.append(f"{project.title}")
@@ -77,7 +87,8 @@ async def export_txt(project_id: str, db: AsyncSession = Depends(get_db)):
     for chapter in sorted(project.chapters, key=lambda c: c.chapter_num):
         lines.append(f"【第{chapter.chapter_num}章】{chapter.title or ''}")
         lines.append("-" * 40)
-        lines.append(chapter.script_text or "（待改编...）")
+        script = _get_script_for_style(chapter, style)
+        lines.append(script or "（待改编...）")
         lines.append("")
         lines.append("")
 
@@ -101,11 +112,15 @@ async def export_docx(project_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Project)
         .where(Project.id == project_id)
-        .options(selectinload(Project.chapters))
+        .options(
+            selectinload(Project.chapters).selectinload(Chapter.adaptations),
+        )
     )
     project = result.scalars().unique().first()
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
+
+    style = project.style
 
     doc = Document()
 
@@ -123,8 +138,9 @@ async def export_docx(project_id: str, db: AsyncSession = Depends(get_db)):
     for chapter in sorted(project.chapters, key=lambda c: c.chapter_num):
         doc.add_heading(f"第{chapter.chapter_num}章  {chapter.title or ''}", level=1)
 
-        if chapter.script_text:
-            for line in chapter.script_text.split("\n"):
+        script = _get_script_for_style(chapter, style)
+        if script:
+            for line in script.split("\n"):
                 doc.add_paragraph(line)
         else:
             doc.add_paragraph("（待改编...）")
@@ -145,3 +161,12 @@ async def export_docx(project_id: str, db: AsyncSession = Depends(get_db)):
             "Content-Disposition": f"attachment; filename={safe_title}_剧本.docx"
         },
     )
+
+
+def _get_script_for_style(chapter, style: str) -> str | None:
+    """Get the adaptation script_text for a specific style, with backward compat fallback."""
+    for a in (chapter.adaptations or []):
+        if a.style == style and a.script_text:
+            return a.script_text
+    # Fall back to legacy chapter.script_text (for data before migration)
+    return chapter.script_text

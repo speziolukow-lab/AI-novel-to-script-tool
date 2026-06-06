@@ -8,7 +8,7 @@ import {
   exportDocxUrl,
   exportTxtUrl,
 } from "../api/client";
-import type { ProjectDetail as ProjectDetailType, ChapterInfo } from "../api/client";
+import type { ProjectDetail as ProjectDetailType, ChapterInfo, AdaptationInfo } from "../api/client";
 import { ScriptViewer } from "./ScriptViewer";
 import { useToast } from "./shared/Toast";
 
@@ -31,20 +31,20 @@ const ADAPT_STAGES = [
 ];
 
 // ── F11: Quality check ──
-function checkQuality(ch: ChapterInfo): string[] {
+function checkQuality(adapt: AdaptationInfo): string[] {
   const warnings: string[] = [];
-  if (!ch.script_text) return warnings;
-  const sceneMatches = ch.script_text.match(/第\s*\d+\s*场/g);
+  if (!adapt.script_text) return warnings;
+  const sceneMatches = adapt.script_text.match(/第\s*\d+\s*场/g);
   const sceneCount = sceneMatches ? sceneMatches.length : 0;
   if (sceneCount > 0 && sceneCount < 3) {
     warnings.push(`场景数偏少（仅 ${sceneCount} 场），可能遗漏场景切换`);
   }
-  const dialogueLines = ch.script_text.split("\n").filter((l) => /^\S+?[：:]/.test(l.trim()));
+  const dialogueLines = adapt.script_text.split("\n").filter((l) => /^\S+?[：:]/.test(l.trim()));
   const badlyFormatted = dialogueLines.filter((l) => !/^[^\s：:]{1,10}[：:]\s*\S/.test(l.trim()));
   if (badlyFormatted.length > 0) {
     warnings.push(`对话格式不规范：${badlyFormatted.length} 处缺少「角色名：」前缀，疑似 LLM 将叙述与对白混淆`);
   }
-  if (ch.script_text.length < 500) {
+  if (adapt.script_text.length < 500) {
     warnings.push("产出长度不足原文的 30%，可能 LLM 未完整改编");
   }
   return warnings;
@@ -123,11 +123,12 @@ export function ProjectDetail({ projectId, onBack }: Props) {
         const p = await getProject(projectId);
         setProject(p);
         const ch = p.chapters.find((c) => c.id === chapterId);
-        if (ch?.status === "completed" || ch?.status === "failed") {
+        const adaptStatus = ch?.adaptations?.[style]?.status ?? "pending";
+        if (adaptStatus === "completed" || adaptStatus === "failed") {
           clearInterval(poll);
           setAdapting(null);
           stopProgress();
-          toast(ch?.status === "completed" ? "✅ 改编完成！" : "❌ 改编失败");
+          toast(adaptStatus === "completed" ? "✅ 改编完成！" : "❌ 改编失败");
         }
       }, 2000);
     } catch {
@@ -171,7 +172,16 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   };
 
   const activeChapter = project?.chapters.find((c) => c.id === activeChapterId);
-  const activeWarnings = activeChapter ? checkQuality(activeChapter) : [];
+  const activeAdaptation = activeChapter?.adaptations?.[style] ?? {
+    status: "pending",
+    script_text: null,
+    error_message: null,
+  } as AdaptationInfo;
+  const activeWarnings = activeAdaptation.script_text ? checkQuality(activeAdaptation) : [];
+
+  // Helper: get adaptation for a chapter + current style
+  const getAdaptation = (ch: ChapterInfo): AdaptationInfo =>
+    ch.adaptations?.[style] ?? { status: "pending", script_text: null, error_message: null };
 
   // Loading
   if (loading) {
@@ -284,7 +294,8 @@ export function ProjectDetail({ projectId, onBack }: Props) {
             </div>
             <div className="chapter-list">
               {project.chapters.map((ch) => {
-                const w = checkQuality(ch);
+                const adapt = getAdaptation(ch);
+                const w = adapt.script_text ? checkQuality(adapt) : [];
                 return (
                   <button
                     key={ch.id}
@@ -292,9 +303,9 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                     onClick={() => setActiveChapterId(ch.id)}
                   >
                     <span className={`status-dot ${
-                      ch.status === "completed" ? "completed" :
-                      ch.status === "adapting" ? "adapting" :
-                      ch.status === "failed" ? "failed" : "pending"
+                      adapt.status === "completed" ? "completed" :
+                      adapt.status === "adapting" ? "adapting" :
+                      adapt.status === "failed" ? "failed" : "pending"
                     }`} />
                     <span className="ch-num">第{ch.chapter_num}章</span>
                     <span className="ch-title">{ch.title}</span>
@@ -350,7 +361,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                 <h3>第{activeChapter.chapter_num}章 · {activeChapter.title}</h3>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   {/* Original vs Script view toggle */}
-                  {activeChapter.script_text && activeChapter.original_text && (
+                  {activeAdaptation.script_text && activeChapter.original_text && (
                     <div className="style-switcher">
                       <button
                         className={viewMode === "original" ? "active" : ""}
@@ -366,11 +377,11 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                       </button>
                     </div>
                   )}
-                  {activeChapter.status === "completed" ? (
+                  {activeAdaptation.status === "completed" ? (
                     <span className="adapt-status done">✅ 已改编</span>
-                  ) : activeChapter.status === "adapting" ? (
+                  ) : activeAdaptation.status === "adapting" ? (
                     <span className="adapt-status active">⏳ 改编中…</span>
-                  ) : activeChapter.status === "failed" ? (
+                  ) : activeAdaptation.status === "failed" ? (
                     <span className="adapt-status failed">❌ 改编失败</span>
                   ) : null}
                   {/* Always show adapt button unless adapting this specific chapter */}
@@ -387,7 +398,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
               </div>
 
               {/* F11: Warning banner */}
-              {activeWarnings.length > 0 && activeChapter.status === "completed" && (
+              {activeWarnings.length > 0 && activeAdaptation.status === "completed" && (
                 <div className="warning-banner">
                   <div className="warn-title">⚠️ 质量检查未通过（{activeWarnings.length} 项）</div>
                   {activeWarnings.map((w, i) => (
@@ -409,26 +420,26 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                 <div className="script-content">
                   {viewMode === "original" && activeChapter.original_text ? (
                     <ScriptViewer text={activeChapter.original_text} />
-                  ) : viewMode === "script" && activeChapter.script_text ? (
-                    <ScriptViewer text={activeChapter.script_text} />
-                  ) : activeChapter.status === "adapting" ? (
+                  ) : viewMode === "script" && activeAdaptation.script_text ? (
+                    <ScriptViewer text={activeAdaptation.script_text} />
+                  ) : activeAdaptation.status === "adapting" ? (
                     <div style={{ textAlign: "center", padding: "48px 0" }}>
                       <div className="spinner" style={{ margin: "0 auto 12px" }} />
                       <p style={{ color: "#94a3b8", fontSize: "14px" }}>AI 正在改编中...</p>
                     </div>
-                  ) : activeChapter.status === "failed" ? (
+                  ) : activeAdaptation.status === "failed" ? (
                     <div style={{ textAlign: "center", padding: "48px 0", fontSize: "14px" }}>
                       <div style={{ color: "#ef4444", fontWeight: 600, marginBottom: "12px" }}>
                         ❌ 改编失败，请重试
                       </div>
-                      {activeChapter.error_message && (
+                      {activeAdaptation.error_message && (
                         <div style={{
                           maxWidth: "500px", margin: "0 auto", padding: "12px 16px",
                           background: "#1e293b", color: "#f1f5f9", borderRadius: "8px",
                           fontSize: "12px", fontFamily: "monospace", textAlign: "left",
                           whiteSpace: "pre-wrap", wordBreak: "break-all",
                         }}>
-                          {activeChapter.error_message}
+                          {activeAdaptation.error_message}
                         </div>
                       )}
                     </div>

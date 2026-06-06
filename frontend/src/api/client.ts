@@ -15,16 +15,23 @@ export interface ProjectSummary {
   created_at: string;
 }
 
+export interface AdaptationInfo {
+  status: string;
+  script_text: string | null;
+  error_message: string | null;
+}
+
 export interface ChapterInfo {
   id: string;
   chapter_num: number;
   title: string;
   status: string;
   original_text: string | null;
-  script_text: string | null;
+  script_text: string | null;  // legacy backward compat
   scenes: any | null;
   characters: any | null;
   error_message: string | null;
+  adaptations: Record<string, AdaptationInfo>;
 }
 
 export interface ProjectDetail extends ProjectSummary {

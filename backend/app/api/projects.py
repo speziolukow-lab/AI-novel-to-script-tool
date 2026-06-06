@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.models import Project, ProjectStatus
+from app.models import Project, ProjectStatus, Chapter, Adaptation
 
 router = APIRouter()
 
@@ -17,7 +17,10 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Project)
         .order_by(Project.created_at.desc())
-        .options(selectinload(Project.chapters), selectinload(Project.characters))
+        .options(
+            selectinload(Project.chapters).selectinload(Chapter.adaptations),
+            selectinload(Project.characters),
+        )
     )
     projects = result.scalars().unique().all()
     return [
@@ -29,7 +32,11 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             "style": p.style,
             "total_chapters": p.total_chapters,
             "completed_chapters": sum(
-                1 for c in p.chapters if c.status.value == "completed"
+                1 for c in p.chapters
+                if any(
+                    a.style == p.style and a.status.value == "completed"
+                    for a in (c.adaptations or [])
+                )
             ),
             "created_at": p.created_at.isoformat(),
         }
@@ -43,11 +50,16 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Project)
         .where(Project.id == project_id)
-        .options(selectinload(Project.chapters), selectinload(Project.characters))
+        .options(
+            selectinload(Project.chapters).selectinload(Chapter.adaptations),
+            selectinload(Project.characters),
+        )
     )
     project = result.scalars().unique().first()
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
+
+    ALL_STYLES = ("film", "comic", "stage")
 
     return {
         "id": project.id,
@@ -63,10 +75,26 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
                 "title": c.title,
                 "status": c.status.value,
                 "original_text": c.original_text,
-                "script_text": c.script_text,
+                "script_text": c.script_text,  # legacy, kept for backward compat
                 "scenes": c.scenes,
                 "characters": c.characters_in_chapter,
                 "error_message": c.error_message,
+                "adaptations": {
+                    s: next(
+                        (
+                            {
+                                "status": a.status.value,
+                                "script_text": a.script_text,
+                                "error_message": a.error_message,
+                            }
+                            for a in (c.adaptations or [])
+                            if a.style == s
+                        ),
+                        # Default empty state for un-adapted styles
+                        {"status": "pending", "script_text": None, "error_message": None},
+                    )
+                    for s in ALL_STYLES
+                },
             }
             for c in sorted(project.chapters, key=lambda c: c.chapter_num)
         ],
