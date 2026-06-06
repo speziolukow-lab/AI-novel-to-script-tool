@@ -64,12 +64,18 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   const stageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
   const initialLoadRef = useRef(true);
+  const styleLoadedRef = useRef(false);
 
   const fetchProject = useCallback(async () => {
     try {
       const data = await getProject(projectId);
       setProject(data);
-      if (data.style) setStyle(data.style);
+      // Only sync style from backend on initial load — avoid
+      // overwriting user choice during polling races.
+      if (!styleLoadedRef.current && data.style) {
+        setStyle(data.style);
+        styleLoadedRef.current = true;
+      }
       // Only auto-select the first chapter on initial load
       if (initialLoadRef.current && data.chapters.length > 0) {
         setActiveChapterId(data.chapters[0].id);
@@ -156,8 +162,12 @@ export function ProjectDetail({ projectId, onBack }: Props) {
 
   const handleStyleChange = async (s: string) => {
     setStyle(s);
-    try { await updateStyle(projectId, s); } catch { /* endpoint may not exist yet */ }
-    toast(`🎨 风格已切换为「${STYLE_OPTIONS.find((o) => o.key === s)?.label}」`);
+    try {
+      await updateStyle(projectId, s);
+      toast(`🎨 风格已切换为「${STYLE_OPTIONS.find((o) => o.key === s)?.label}」`);
+    } catch {
+      toast("❌ 风格切换失败，请重试");
+    }
   };
 
   const activeChapter = project?.chapters.find((c) => c.id === activeChapterId);

@@ -15,7 +15,7 @@ export function DeleteModal({ open, projectTitle, onConfirm, onCancel }: DeleteM
           🗑️ 确认删除
         </h3>
         <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "16px", lineHeight: 1.6 }}>
-          删除后将无法恢复，包括所有改编剧本和角色数据。
+          确定删除「{projectTitle}」？删除后将无法恢复，包括所有改编剧本和角色数据。
         </p>
         <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
           <button

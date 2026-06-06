@@ -84,6 +84,30 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.put("/projects/{project_id}/style")
+async def update_project_style(
+    project_id: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the adaptation style for a project (film / comic / stage)."""
+    new_style = body.get("style", "")
+    if new_style not in ("film", "comic", "stage"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"不支持的风格：{new_style}。可选值：film、comic、stage",
+        )
+
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    project.style = new_style
+    await db.commit()
+    return {"project_id": project.id, "style": project.style}
+
+
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
     """Delete a project and all associated data."""
