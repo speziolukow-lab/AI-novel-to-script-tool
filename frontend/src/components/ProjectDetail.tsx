@@ -434,7 +434,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
         <button
           className="btn-adapt-all"
           onClick={() => { setBatchMode(true); setSelectedIds(new Set()); }}
-          disabled={adapting !== null || project.status === "adapting"}
+          disabled={adapting === "__batch__"}
         >
           {adapting === "__batch__" ? "⏳ 改编中..." : "📋 批量改编"}
         </button>
