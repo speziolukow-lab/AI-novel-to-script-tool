@@ -210,7 +210,54 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     error_message: null,
   } as AdaptationInfo;
   const activeWarnings = activeAdaptation.script_text ? checkQuality(activeAdaptation) : [];
-  const highlightSet = new Set(activeWarnings.flatMap((w) => w.lines));
+  const scriptHighlightSet = new Set(activeWarnings.flatMap((w) => w.lines));
+
+  // ── Original‑text highlight set ──
+  // Finds lines in the original novel text that are likely related to
+  // the quality warnings (e.g. character‑name mentions, very long paragraphs).
+  const originalHighlightSet = (() => {
+    const set = new Set<number>();
+    if (!activeChapter?.original_text) return set;
+
+    const origLines = activeChapter.original_text.split("\n");
+
+    // 1. Long paragraphs that may be hard for the AI to process
+    origLines.forEach((line, idx) => {
+      if (line.length > 500) set.add(idx);
+    });
+
+    // 2. For script-dialogue warnings, highlight original lines that
+    //    mention the same character names (Chinese novel dialogue markers).
+    const dialogueWarnings = activeWarnings.filter(
+      (w) => w.lines.length > 0 && w.message.includes("角色名")
+    );
+    if (dialogueWarnings.length > 0 && activeAdaptation.script_text) {
+      // Collect character names from the flagged script lines
+      const scriptLines = activeAdaptation.script_text.split("\n");
+      const charNames = new Set<string>();
+      for (const w of dialogueWarnings) {
+        for (const li of w.lines) {
+          const sLine = scriptLines[li] || "";
+          const m = sLine.match(/^(\S+?)[：:]/);
+          if (m) charNames.add(m[1]);
+        }
+      }
+      // Find original lines mentioning those characters in dialogue context
+      origLines.forEach((line, idx) => {
+        for (const name of charNames) {
+          if (
+            line.includes(name) &&
+            /[说道喊问叫骂喊叹喝嚷]/.test(line)
+          ) {
+            set.add(idx);
+            break;
+          }
+        }
+      });
+    }
+
+    return set;
+  })();
 
   // Helper: get adaptation for a chapter + current style
   const getAdaptation = (ch: ChapterInfo): AdaptationInfo =>
@@ -469,9 +516,9 @@ export function ProjectDetail({ projectId, onBack }: Props) {
               ) : (
                 <div className="script-content">
                   {viewMode === "original" && activeChapter.original_text ? (
-                    <ScriptViewer text={activeChapter.original_text} />
+                    <ScriptViewer text={activeChapter.original_text} highlightLines={originalHighlightSet} />
                   ) : viewMode === "script" && activeAdaptation.script_text ? (
-                    <ScriptViewer text={activeAdaptation.script_text} highlightLines={highlightSet} />
+                    <ScriptViewer text={activeAdaptation.script_text} highlightLines={scriptHighlightSet} />
                   ) : activeAdaptation.status === "adapting" ? (
                     <div style={{ textAlign: "center", padding: "48px 0" }}>
                       <div className="spinner" style={{ margin: "0 auto 12px" }} />
