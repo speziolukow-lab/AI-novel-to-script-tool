@@ -5,6 +5,7 @@ import {
   adaptBatchChapters,
   updateStyle,
   updateAdaptationScript,
+  extractCharacters,
   exportMarkdownUrl,
   exportDocxUrl,
   exportTxtUrl,
@@ -105,6 +106,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   const [saving, setSaving] = useState(false);
   const adaptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [extractingChars, setExtractingChars] = useState(false);
   const { toast } = useToast();
   const initialLoadRef = useRef(true);
   const styleLoadedRef = useRef(false);
@@ -275,6 +277,19 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     }
   };
 
+  const handleExtractCharacters = async () => {
+    setExtractingChars(true);
+    try {
+      const result = await extractCharacters(projectId);
+      await fetchProject();
+      toast(`🎭 已提取 ${result.count} 个角色`);
+    } catch {
+      toast("❌ 角色提取失败，请重试");
+    } finally {
+      setExtractingChars(false);
+    }
+  };
+
   const enterEditMode = () => {
     setEditText(activeAdaptation.script_text ?? "");
     setEditMode(true);
@@ -412,7 +427,10 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     : "#64748b";
 
   // Computed layout values for 3-column resizable layout
-  const showCharacters = !!(activeChapter && activeAdaptation.characters && activeAdaptation.characters.length > 0);
+  // Show character panel if project has characters (generated via "生成角色档案")
+  // OR if a chapter is selected (show empty state prompt)
+  const projectCharacters = project?.characters ?? [];
+  const showCharacters = projectCharacters.length > 0 || !!activeChapter;
   const HANDLE_W = 6; // each resize handle width in px
   const handlesW = showCharacters ? HANDLE_W * 4 : HANDLE_W * 2; // edge + inner per side
   const centerWidth = containerWidth - leftWidth - (showCharacters ? rightWidth : 0) - handlesW;
@@ -472,6 +490,19 @@ export function ProjectDetail({ projectId, onBack }: Props) {
             </a>
           ))}
         </div>
+
+        {/* Extract characters */}
+        <button
+          className="btn-adapt-all"
+          onClick={handleExtractCharacters}
+          disabled={extractingChars}
+          style={{
+            background: extractingChars ? "#cbd5e1" : "#8b5cf6",
+            border: extractingChars ? "1px solid #cbd5e1" : "1px solid #7c3aed",
+          }}
+        >
+          {extractingChars ? "⏳ 提取中..." : "🎭 生成角色档案"}
+        </button>
 
         {/* F5: Batch adapt */}
         <button
@@ -873,28 +904,23 @@ export function ProjectDetail({ projectId, onBack }: Props) {
           />
         )}
 
-        {/* RIGHT: Per-chapter character profiles (5-chapter sliding window) */}
+        {/* RIGHT: Project-level character profiles (generated via "生成角色档案") */}
         {showCharacters && (
           <div style={{ width: rightWidth, flexShrink: 0 }}>
             <div className="character-panel character-panel--right">
               <div className="character-panel-header">
                 🎭 角色档案
-                <span style={{ fontSize: "10px", color: "#94a3b8" }}>
-                  第{Math.max(1, activeChapter.chapter_num - 2)}-{activeChapter.chapter_num + 2}章
+                <span style={{ fontSize: "10px", color: "#a78bfa" }}>
+                  全本 {projectCharacters.length} 人
                 </span>
               </div>
               <div className="character-list">
-                {activeAdaptation.characters.map((ch, i) => (
-                  <div key={i} className="character-row">
+                {projectCharacters.map((ch, i) => (
+                  <div key={ch.id || i} className="character-row">
                     <div className="ch-avatar">{ch.name[0]}</div>
                     <div className="ch-info">
                       <div className="ch-name">
                         {ch.name}
-                        {ch.role && (
-                          <span style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 400, marginLeft: "4px" }}>
-                            {ch.role}
-                          </span>
-                        )}
                       </div>
                       {ch.description && (
                         <div className="ch-role">{ch.description}</div>
@@ -915,13 +941,35 @@ export function ProjectDetail({ projectId, onBack }: Props) {
           </div>
         )}
 
-        {/* Resize handle: right edge → controls overall container width */}
-        {showCharacters && (
-          <div
-            className="resize-handle resize-handle--edge"
-            onMouseDown={beginResize("rightEdge")}
-          />
+        {/* Empty character panel: prompt user to generate */}
+        {!showCharacters && activeChapter && (
+          <div style={{ width: rightWidth, flexShrink: 0 }}>
+            <div className="character-panel character-panel--right">
+              <div className="character-panel-header">
+                🎭 角色档案
+              </div>
+              <div style={{
+                padding: "24px 16px", textAlign: "center",
+                color: "#94a3b8", fontSize: "13px",
+                lineHeight: "1.8",
+              }}>
+                <p style={{ fontSize: "32px", marginBottom: "8px" }}>🎭</p>
+                <p>尚未生成角色档案</p>
+                <p style={{ fontSize: "11px", marginTop: "4px" }}>
+                  点击顶部「生成角色档案」按钮
+                  <br />
+                  AI 将自动提取全本人物信息
+                </p>
+              </div>
+            </div>
+          </div>
         )}
+
+        {/* Resize handle: right edge → controls overall container width */}
+        <div
+          className="resize-handle resize-handle--edge"
+          onMouseDown={beginResize("rightEdge")}
+        />
       </div>
     </div>
   );

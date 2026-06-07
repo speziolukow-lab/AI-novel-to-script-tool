@@ -29,6 +29,13 @@ body {
   color: #1e293b;
   line-height: 1.6;
   min-height: 100vh;
+  cursor: default;
+  caret-color: transparent;
+}
+
+input, textarea, [contenteditable] {
+  caret-color: auto;
+  cursor: text;
 }
 
 /* ── Proto banner (sticky top nav) ── */

@@ -1,12 +1,18 @@
 """Project management API."""
 
+import asyncio
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.models import Project, ProjectStatus, Chapter, Adaptation
+from app.models import Project, ProjectStatus, Chapter, Character, Adaptation
+from app.services.ai_adapter import ai_adapter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -136,6 +142,90 @@ async def update_project_style(
     project.style = new_style
     await db.commit()
     return {"project_id": project.id, "style": project.style}
+
+
+@router.post("/projects/{project_id}/extract-characters")
+async def extract_project_characters(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Extract characters from all chapters of a project and save to the characters table.
+
+    This runs synchronously in a thread to avoid blocking the async event loop
+    while making multiple AI calls.
+    """
+    result = await db.execute(
+        select(Project)
+        .where(Project.id == project_id)
+        .options(
+            selectinload(Project.chapters),
+            selectinload(Project.characters),
+        )
+    )
+    project = result.scalars().unique().first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    if not project.chapters:
+        raise HTTPException(status_code=400, detail="项目没有章节，无法提取角色")
+
+    # Collect chapter texts
+    chapters_text = [
+        c.original_text
+        for c in sorted(project.chapters, key=lambda c: c.chapter_num)
+    ]
+
+    # Run extraction in thread (makes multiple AI calls)
+    characters = await asyncio.to_thread(
+        ai_adapter.extract_characters_for_project, chapters_text
+    )
+
+    if not characters:
+        raise HTTPException(status_code=500, detail="角色提取失败，未获取到任何角色")
+
+    # Save to characters table — delete old entries first
+    for old_char in project.characters:
+        await db.delete(old_char)
+    await db.flush()
+
+    for c_data in characters:
+        char = Character(
+            project_id=project.id,
+            name=c_data.get("name", "未知"),
+            aliases=c_data.get("aliases", []),
+            description=c_data.get("description", ""),
+            traits=c_data.get("traits", []),
+            relationships=c_data.get("relationships"),
+        )
+        db.add(char)
+
+    await db.commit()
+
+    # Reload project to get the saved characters with IDs
+    await db.refresh(project)
+    result = await db.execute(
+        select(Project)
+        .where(Project.id == project_id)
+        .options(selectinload(Project.characters))
+    )
+    project = result.scalars().unique().first()
+
+    return {
+        "project_id": project_id,
+        "characters": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "aliases": c.aliases,
+                "description": c.description,
+                "traits": c.traits,
+                "role": c.relationships.get("role", "") if c.relationships else "",
+            }
+            for c in (project.characters if project else [])
+        ],
+        "count": len(characters),
+    }
 
 
 @router.delete("/projects/{project_id}")
