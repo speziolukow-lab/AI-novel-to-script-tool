@@ -448,17 +448,26 @@ export function ProjectDetail({ projectId, onBack }: Props) {
           alignItems: "center", justifyContent: "center",
         }} onClick={() => setBatchMode(false)}>
           <div style={{
-            background: "#fff", borderRadius: "12px", padding: "24px",
-            width: "420px", maxHeight: "70vh", overflow: "auto",
+            background: "#fff", borderRadius: "12px",
+            width: "420px", maxHeight: "70vh",
+            display: "flex", flexDirection: "column",
             boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
           }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ margin: "0 0 8px 0", fontSize: "16px" }}>
-              📋 批量改编（已选 {selectedIds.size}/5 章）
-            </h3>
-            <p style={{ margin: "0 0 16px 0", fontSize: "12px", color: "#94a3b8" }}>
-              选择需要改编的章节，一次最多 5 章
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "20px" }}>
+            {/* Header */}
+            <div style={{ padding: "24px 24px 12px 24px", flexShrink: 0 }}>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "16px" }}>
+                📋 批量改编（已选 {selectedIds.size}/5 章）
+              </h3>
+              <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>
+                选择需要改编的章节，一次最多 5 章
+              </p>
+            </div>
+            {/* Scrollable chapter list */}
+            <div style={{
+              flex: 1, overflow: "auto",
+              padding: "0 24px 12px 24px",
+              display: "flex", flexDirection: "column", gap: "4px",
+            }}>
               {project.chapters.map((ch) => {
                 const adapt = getAdaptation(ch);
                 const isSelected = selectedIds.has(ch.id);
@@ -497,7 +506,15 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                 );
               })}
             </div>
-            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+            {/* Sticky footer buttons */}
+            <div style={{
+              flexShrink: 0,
+              display: "flex", gap: "10px", justifyContent: "flex-end",
+              padding: "12px 24px 20px 24px",
+              borderTop: "1px solid #e2e8f0",
+              background: "#fff",
+              borderRadius: "0 0 12px 12px",
+            }}>
               <button
                 onClick={() => { setBatchMode(false); setSelectedIds(new Set()); }}
                 style={{
