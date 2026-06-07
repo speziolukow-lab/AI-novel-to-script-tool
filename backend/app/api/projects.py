@@ -170,15 +170,15 @@ async def extract_project_characters(
     if not project.chapters:
         raise HTTPException(status_code=400, detail="项目没有章节，无法提取角色")
 
-    # Collect chapter texts
-    chapters_text = [
-        c.original_text
+    # Collect chapter data with chapter_num for sliding window
+    chapters_data = [
+        {"chapter_num": c.chapter_num, "text": c.original_text or ""}
         for c in sorted(project.chapters, key=lambda c: c.chapter_num)
     ]
 
-    # Run extraction in thread (makes multiple AI calls)
+    # Run extraction in thread (uses 5-chapter sliding window per chapter)
     characters = await asyncio.to_thread(
-        ai_adapter.extract_characters_for_project, chapters_text
+        ai_adapter.extract_characters_for_project, chapters_data
     )
 
     if not characters:

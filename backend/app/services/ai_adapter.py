@@ -449,42 +449,50 @@ class AIAdapter:
 
         return self._parse_character_json(response.choices[0].message.content or "")
 
-    def extract_characters_for_project(self, chapters_text: list[str]) -> list[dict]:
+    def extract_characters_for_project(
+        self, chapters: list[dict]
+    ) -> list[dict]:
         """
-        Extract characters from all chapters of a project with deduplication.
+        Extract characters from a project using the 5-chapter sliding window
+        rule (same as the original adaptation flow). For each chapter N, use
+        chapters [N-2, N+2] as the context window, then deduplicate across
+        all windows.
 
-        Processes chapters in batches (max ~6000 chars per batch), extracts
-        characters from each batch, then merges results by name.
+        Args:
+            chapters: List of {"chapter_num": int, "text": str} sorted by chapter_num.
 
         Returns:
-            List of deduplicated character dicts with name, aliases, description,
-            traits, role fields.
+            List of deduplicated character dicts.
         """
-        if not chapters_text:
+        if not chapters:
             return []
 
-        # Batch chapters into groups of ~6000 chars
-        batches: list[str] = []
-        current_batch = ""
-        for text in chapters_text:
-            if not text:
-                continue
-            if len(current_batch) + len(text) > 6000 and current_batch:
-                batches.append(current_batch)
-                current_batch = text
-            else:
-                current_batch = current_batch + "\n\n" + text if current_batch else text
-        if current_batch:
-            batches.append(current_batch)
-
-        # Extract characters from each batch
+        total = len(chapters)
         all_characters: list[dict] = []
-        for batch in batches:
+
+        for i, ch in enumerate(chapters):
+            chapter_num = ch["chapter_num"]
+            # Sliding window: max(1, N-2) to min(total, N+2)
+            win_start = max(1, chapter_num - 2)
+            win_end = min(
+                max(c["chapter_num"] for c in chapters), chapter_num + 2
+            )
+            window_texts = [
+                c["text"] for c in chapters
+                if win_start <= c["chapter_num"] <= win_end and c["text"]
+            ]
+            window_text = "\n\n".join(window_texts)
+            if not window_text.strip():
+                continue
+
             try:
-                chars = self.extract_characters_sync(batch)
+                chars = self.extract_characters_sync(window_text)
                 all_characters.extend(chars)
             except Exception:
-                logger.exception("Character extraction failed for batch")
+                logger.exception(
+                    "Character extraction failed for chapter %d (window %d-%d)",
+                    chapter_num, win_start, win_end,
+                )
                 continue
 
         # Deduplicate by name
