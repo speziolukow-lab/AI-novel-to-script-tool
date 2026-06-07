@@ -389,6 +389,7 @@ class AIAdapter:
         client = OpenAI(
             api_key=settings.DEEPSEEK_API_KEY,
             base_url="https://api.deepseek.com/v1",
+            timeout=120.0,
         )
 
         response = client.chat.completions.create(
@@ -399,6 +400,7 @@ class AIAdapter:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
+            timeout=120.0,
             extra_body={"thinking": {"type": "disabled"}},
         )
 
@@ -600,6 +602,7 @@ class AIAdapter:
         client = OpenAI(
             api_key=settings.DEEPSEEK_API_KEY,
             base_url="https://api.deepseek.com/v1",
+            timeout=300.0,
         )
 
         response = client.chat.completions.create(
@@ -610,6 +613,7 @@ class AIAdapter:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
+            timeout=300.0,
             extra_body={"thinking": {"type": "disabled"}},
         )
 
@@ -658,6 +662,7 @@ class AIAdapter:
         client = OpenAI(
             api_key=settings.DEEPSEEK_API_KEY,
             base_url="https://api.deepseek.com/v1",
+            timeout=300.0,
         )
 
         response = client.chat.completions.create(
@@ -668,6 +673,7 @@ class AIAdapter:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
+            timeout=300.0,
             extra_body={"thinking": {"type": "disabled"}},
         )
 
