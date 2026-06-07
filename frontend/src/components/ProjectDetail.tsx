@@ -242,7 +242,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
       setBatchMode(false);
       setSelectedIds(new Set());
       startProgress();
-      await adaptBatchChapters(projectId, ids);
+      await adaptBatchChapters(projectId, ids, style);
       const poll = setInterval(async () => {
         const p = await getProject(projectId);
         setProject(p);
@@ -469,7 +469,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                 📋 批量改编（已选 {selectedIds.size}/5 章）
               </h3>
               <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>
-                选择需要改编的章节，一次最多 5 章
+                当前风格：{STYLE_OPTIONS.find((o) => o.key === style)?.label ?? style} · 选择需要改编的章节，一次最多 5 章
               </p>
             </div>
             {/* Scrollable chapter list */}

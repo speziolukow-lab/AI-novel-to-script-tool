@@ -84,6 +84,7 @@ from pydantic import BaseModel
 
 class AdaptBatchRequest(BaseModel):
     chapter_ids: list[str]
+    style: str = ""  # optional; if not provided, uses project.style
 
 
 @router.post("/projects/{project_id}/adapt-batch")
@@ -109,7 +110,7 @@ async def adapt_batch_chapters(
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
 
-    style = project.style
+    style = req.style if req.style in ("film", "comic", "stage") else project.style
     valid_ids = set(req.chapter_ids)
 
     chapters_to_adapt: list[Chapter] = []
@@ -145,7 +146,7 @@ async def adapt_batch_chapters(
             _run_adaptation(
                 chapter_id=chapter.id,
                 project_id=project.id,
-                style=project.style,
+                style=style,
             )
         )
 

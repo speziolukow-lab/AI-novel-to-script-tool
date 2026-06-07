@@ -122,11 +122,12 @@ export async function adaptChapter(chapterId: string): Promise<{ chapter_id: str
 export async function adaptBatchChapters(
   projectId: string,
   chapterIds: string[],
+  style: string = "",
 ): Promise<{ project_id: string; chapters_queued: number }> {
   const res = await fetch(`${BASE}/projects/${projectId}/adapt-batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chapter_ids: chapterIds }),
+    body: JSON.stringify({ chapter_ids: chapterIds, style }),
   });
   if (!res.ok) throw new Error("Batch adaptation failed");
   return res.json();
