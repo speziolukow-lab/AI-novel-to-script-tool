@@ -141,8 +141,6 @@ async def update_project_style(
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
     """Delete a project and all associated data."""
-    from sqlalchemy.orm import selectinload
-
     result = await db.execute(
         select(Project)
         .where(Project.id == project_id)
@@ -180,8 +178,6 @@ async def delete_projects_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple projects at once."""
-    from sqlalchemy.orm import selectinload
-
     if not req.project_ids:
         raise HTTPException(status_code=400, detail="请至少选择一个项目")
 
