@@ -338,8 +338,6 @@ async def _run_adaptation(
                     "version": 2,
                     "structured_scenes": all_structured_scenes,
                 }
-                if chapter_characters:
-                    adaptation.characters_in_chapter = chapter_characters
                 adaptation.status = ChapterStatus.COMPLETED
                 # Also update chapter for backward compatibility
                 chapter.script_text = full_script
