@@ -149,3 +149,39 @@ async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
     await db.delete(project)
     await db.commit()
     return {"detail": "项目已删除"}
+
+
+from pydantic import BaseModel
+
+
+class DeleteBatchRequest(BaseModel):
+    project_ids: list[str]
+
+
+@router.post("/projects/delete-batch")
+async def delete_projects_batch(
+    req: DeleteBatchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete multiple projects at once."""
+    if not req.project_ids:
+        raise HTTPException(status_code=400, detail="请至少选择一个项目")
+
+    result = await db.execute(
+        select(Project).where(Project.id.in_(req.project_ids))
+    )
+    projects = result.scalars().all()
+
+    if not projects:
+        raise HTTPException(status_code=404, detail="未找到所选项目")
+
+    deleted_count = 0
+    for project in projects:
+        await db.delete(project)
+        deleted_count += 1
+    await db.commit()
+
+    return {
+        "detail": f"已删除 {deleted_count} 个项目",
+        "deleted_count": deleted_count,
+    }

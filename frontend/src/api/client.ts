@@ -113,6 +113,16 @@ export async function deleteProject(projectId: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete project");
 }
 
+export async function deleteProjectsBatch(projectIds: string[]): Promise<{ deleted_count: number }> {
+  const res = await fetch(`${BASE}/projects/delete-batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_ids: projectIds }),
+  });
+  if (!res.ok) throw new Error("Batch delete failed");
+  return res.json();
+}
+
 export async function adaptChapter(chapterId: string): Promise<{ chapter_id: string; status: string }> {
   const res = await fetch(`${BASE}/chapters/${chapterId}/adapt`, { method: "POST" });
   if (!res.ok) throw new Error("Adaptation failed");
