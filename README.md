@@ -10,7 +10,9 @@
 - 🎭 **示例小说一键加载**：无需准备文件，点击即可体验全流程
 - 📖 **原文/剧本对比**：一键切换查看改编前后效果
 - ⚠️ **质量自检**：自动检测格式问题，高亮定位问题行
-- 📋 **批量改编**：勾选 1-5 章，按需批量改编
+- 📋 **批量改编**：勾选 1-5 章按需批量改编，风格跟随当前选择
+- 🗑️ **批量删除**：项目列表支持多选批量删除
+- ✏️ **剧本编辑**：在线编辑已改编剧本，保存后即时生效
 - 📤 **多格式导出**：Markdown / TXT / Word（.docx）/ YAML（结构化剧本数据）
   - 全本导出：`标题_全本_风格剧本.ext`
   - 单章导出：`标题_第N章_风格剧本.ext`
@@ -84,9 +86,12 @@ npm run dev                   # 启动 http://localhost:5173
 | `/api/demo` | POST | 加载示例小说 |
 | `/api/projects` | GET | 项目列表 |
 | `/api/projects/{id}` | GET | 项目详情 |
+| `/api/projects/{id}` | DELETE | 删除项目 |
+| `/api/projects/delete-batch` | POST | 批量删除项目 |
 | `/api/projects/{id}/style` | PUT | 切换改编风格 |
 | `/api/projects/{id}/adapt-batch` | POST | 批量改编（选 1-5 章） |
 | `/api/chapters/{id}/adapt` | POST | 改编单章 |
+| `/api/chapters/{id}/adaptations/{style}` | PUT | 手动编辑剧本内容 |
 | `/api/projects/{id}/export/markdown` | GET | 导出全本 Markdown |
 | `/api/projects/{id}/export/txt` | GET | 导出全本 TXT |
 | `/api/projects/{id}/export/docx` | GET | 导出全本 Word |

@@ -9,7 +9,7 @@
 ### 2.1 顶层结构
 
 ```yaml
-# 剧本 YAML Schema v2.0
+# 剧本 YAML Schema v3.0
 project:
   title: string         # 项目/小说标题
   author: string        # 原著作者
@@ -26,13 +26,22 @@ chapters:
 ### 2.2 场景（Scene）
 
 ```yaml
-scene_num: int                # 场景序号（从 1 开始，跨章节递增）
-time: string | null           # 时间描述（如 "黄昏"、"深夜"）
-location: string | null       # 地点描述（如 "城主府大厅"）
-characters: string[]          # 出场人物列表
-stage_directions: string[]    # 舞台指示列表（环境、动作、心理描写）
-dialogues: Dialogue[]         # 对白列表
+scene_num: int                      # 场景序号（从 1 开始，跨章节递增）
+time: string | null                 # 时间描述（如 "黄昏"、"深夜"）
+location: string | null             # 地点描述（如 "城主府大厅"）
+characters: string[]                # 出场人物列表
+stage_directions: StageDirection[]  # 舞台指示列表（含文本 + 穿插位置）
+dialogues: Dialogue[]               # 对白列表
 ```
+
+### 2.2.1 舞台指示（StageDirection）
+
+```yaml
+text: string       # 舞台指示文本（环境、动作、心理描写）
+position: int      # 插入位置：0=第一条对话前，1=第一条后/第二条前，以此类推
+```
+
+> **v3.0 变更**: `stage_directions` 从 `string[]` 改为 `StageDirection[]` 对象数组，支持按原著顺序将舞台指示穿插到对话之间，而非全部堆积在场景开头。
 
 ### 2.3 对白（Dialogue）
 
@@ -58,7 +67,9 @@ parenthetical: string | null  # 演员指示（括号内的表演指导），如
 | `scenes[].time` | `string \| null` | ✓ | 时间 |
 | `scenes[].location` | `string \| null` | ✓ | 地点 |
 | `scenes[].characters` | `string[]` | ✓ | 出场人物 |
-| `scenes[].stage_directions` | `string[]` | ✓ | 舞台指示 |
+| `scenes[].stage_directions` | `StageDirection[]` | ✓ | 舞台指示（v3.0: 对象数组，含 text + position） |
+| `scenes[].stage_directions[].text` | `string` | ✓ | 舞台指示文本 |
+| `scenes[].stage_directions[].position` | `int` | ✓ | 插入位置（0=第一条对话前） |
 | `scenes[].dialogues` | `Dialogue[]` | ✓ | 对白列表 |
 | `dialogues[].character` | `string` | ✓ | 说话角色名 |
 | `dialogues[].line` | `string` | ✓ | 对白内容 |
@@ -88,8 +99,10 @@ chapters:
           - "萧宁"
           - "萧战"
         stage_directions:
-          - "演武场上尘土飞扬，数十名少年正在修炼"
-          - "萧炎站在角落，手中的木剑无力地挥舞着"
+          - text: "演武场上尘土飞扬，数十名少年正在修炼"
+            position: 0
+          - text: "萧炎站在角落，手中的木剑无力地挥舞着"
+            position: 0
         dialogues:
           - character: "萧宁"
             line: "这不是我们萧家的'天才'吗？怎么连最基本的剑法都使不出来了？"
@@ -104,8 +117,10 @@ chapters:
           - "萧炎"
           - "药老"
         stage_directions:
-          - "月光透过窗棂洒进房间，萧炎盘膝坐在床上"
-          - "手指上的戒指突然发出一道微光"
+          - text: "月光透过窗棂洒进房间，萧炎盘膝坐在床上"
+            position: 0
+          - text: "手指上的戒指突然发出一道微光"
+            position: 1
         dialogues:
           - character: "萧炎"
             line: "三年了……难道我真的就这样变成一个废人了吗？"
@@ -146,21 +161,30 @@ chapters:
 - **人机可读**：人类阅读时不会被括号打断；机器处理时可直接判断 `if dialogue.parenthetical` 来添加格式
 - **国际化**：不同语言的剧本格式对演员指示的括号要求不同（中文用（），英文用 ( )），分离后可根据输出目标调整
 
-### 4.4 stage_directions 和 dialogues 均为数组
+### 4.4 stage_directions 使用 {text, position} 对象数组
 
-**设计决策**：`stage_directions` 和 `dialogues` 使用数组而非合并的"元素列表"。
+**设计决策**：`stage_directions` 从 `string[]` 改为 `{text: string, position: int}[]` 对象数组。`position` 字段指定舞台指示在对话序列中的插入位置（0=第一条对话前，1=第一条对话后/第二条对话前，以此类推）。
 
 **原因**：
-- **顺序保持**：两个独立数组通过索引保持舞台指示和对白交替出现的顺序。例如：`stage_directions[0]` → `dialogues[0]` → `stage_directions[1]` → `dialogues[1]` 依次渲染
-- **批量操作**：可以一次性提取所有舞台指示或所有对白，方便批量分析（如统计台词量、提取环境描写）
-- **格式保留**：原文中连续的舞台指示或连续的对白不会被不必要地"交替合并"打断
-- **可组合性**：渲染时可按需组合：
+- **精确穿插**：原著中舞台指示（动作描写、环境描写）通常发生在特定对话之间。例如原文在角色 A 说完后描写 B 的脸色变化，这个描写就应该出现在 A 的对话后、B 的对话前。简单的交替渲染（方向→对话→方向→对话）无法精准匹配这种复杂的穿插
+- **向后兼容**：旧格式的字符串数组被自动转换为 `{text, position: 0}`，已有数据不会报错
+- **批量操作保留**：依然可以一次性提取所有舞台指示（忽略 position），方便批量分析
+- **可组合性**：渲染器按 position 排序后穿插到对话之间：
 
 ```python
-# 按原始顺序渲染
-for sd, d in zip_longest(scene["stage_directions"], scene["dialogues"]):
-    if sd: print(sd)
-    if d: print(f"{d['character']}：{d['line']}")
+# 按 position 分组 → 穿插渲染
+dirs_by_pos = defaultdict(list)
+for d in stage_directions:
+    dirs_by_pos[d["position"]].append(d["text"])
+
+# position 0: 在第一条对话前
+for text in dirs_by_pos[0]:
+    print(text)
+# 交替输出第 i 条对话 → position i+1 的方向
+for i, dialogue in enumerate(dialogues):
+    print(f"{dialogue['character']}：{dialogue['line']}")
+    for text in dirs_by_pos[i + 1]:
+        print(text)
 ```
 
 ### 4.5 Flat characters 列表
@@ -199,7 +223,7 @@ for sd, d in zip_longest(scene["stage_directions"], scene["dialogues"]):
 
 ### 6.1 版本号管理
 
-`Adaptation.scenes.version` 字段当前为 `2`（引入 structured_scenes），未来 Schema 变更时递增版本号，确保向后兼容。
+`Adaptation.scenes.version` 字段当前为 `2`（v2: 引入 structured_scenes；v3.0: stage_directions 改为对象数组），未来 Schema 变更时递增版本号，确保向后兼容。
 
 ### 6.2 预留字段
 
