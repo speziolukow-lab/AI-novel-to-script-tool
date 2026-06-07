@@ -699,10 +699,6 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                       className="btn-adapt-one"
                       onClick={handleExtractCharacters}
                       disabled={extractingChars}
-                      style={{
-                        background: extractingChars ? "#cbd5e1" : "#8b5cf6",
-                        borderColor: extractingChars ? "#cbd5e1" : "#7c3aed",
-                      }}
                     >
                       {extractingChars ? "⏳ 提取中..." : "🎭 角色档案"}
                     </button>
