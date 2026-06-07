@@ -438,12 +438,9 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     : "#64748b";
 
   // Computed layout values for 3-column resizable layout
-  // Character panel: prefer the active chapter's merged profile;
-  // fall back to project-level characters; otherwise show empty state
-  const projectCharacters = project?.characters ?? [];
+  // Character panel: show whenever a chapter is selected (profile or empty state)
   const activeChapterProfile = activeChapterId ? chapterProfiles[activeChapterId] : undefined;
-  const displayCharacters = activeChapterProfile ?? projectCharacters;
-  const showCharacters = displayCharacters.length > 0 || !!activeChapter;
+  const showCharacters = !!activeChapter;
   const HANDLE_W = 6; // each resize handle width in px
   const handlesW = showCharacters ? HANDLE_W * 4 : HANDLE_W * 2; // edge + inner per side
   const centerWidth = containerWidth - leftWidth - (showCharacters ? rightWidth : 0) - handlesW;
@@ -915,19 +912,19 @@ export function ProjectDetail({ projectId, onBack }: Props) {
         )}
 
         {/* RIGHT: Chapter character profile (window-merged, independent per chapter) */}
-        {showCharacters && (
+        {showCharacters && activeChapterProfile && (
           <div style={{ width: rightWidth, flexShrink: 0 }}>
             <div className="character-panel character-panel--right">
               <div className="character-panel-header">
                 🎭 角色档案
-                {activeChapterProfile && activeChapter && (
+                {activeChapter && (
                   <span style={{ fontSize: "10px", fontWeight: 400, color: "#94a3b8", marginLeft: "6px" }}>
                     第{activeChapter.chapter_num}章
                   </span>
                 )}
               </div>
               <div className="character-list">
-                {displayCharacters.map((ch, i) => {
+                {activeChapterProfile.map((ch, i) => {
                   const name = ch.name;
                   const desc = ch.description ?? "";
                   const traits = ch.traits ?? [];
@@ -956,7 +953,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
         )}
 
         {/* Empty character panel: prompt user to generate */}
-        {!showCharacters && activeChapter && (
+        {showCharacters && !activeChapterProfile && (
           <div style={{ width: rightWidth, flexShrink: 0 }}>
             <div className="character-panel character-panel--right">
               <div className="character-panel-header">
