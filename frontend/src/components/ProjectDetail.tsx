@@ -15,7 +15,7 @@ import {
   exportChapterTxtUrl,
   exportChapterYamlUrl,
 } from "../api/client";
-import type { ProjectDetail as ProjectDetailType, ChapterInfo, AdaptationInfo } from "../api/client";
+import type { ProjectDetail as ProjectDetailType, ChapterInfo, AdaptationInfo, CharacterData } from "../api/client";
 import { ScriptViewer } from "./ScriptViewer";
 import { useToast } from "./shared/Toast";
 
@@ -107,6 +107,8 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   const adaptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [extractingChars, setExtractingChars] = useState(false);
+  // Per-chapter merged profile: chapterId → CharacterData[]
+  const [chapterProfiles, setChapterProfiles] = useState<Record<string, CharacterData[]>>({});
   const { toast } = useToast();
   const initialLoadRef = useRef(true);
   const styleLoadedRef = useRef(false);
@@ -282,8 +284,16 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     setExtractingChars(true);
     try {
       const result = await extractCharacters(activeChapterId);
+      // Store per-chapter profile for the target chapter
+      setChapterProfiles((prev) => ({
+        ...prev,
+        [activeChapterId]: result.profile_characters,
+      }));
       await fetchProject();
-      toast(`🎭 已提取 ${result.count} 个角色（${result.window || ""}）`);
+      const reusedInfo = result.reused > 0
+        ? `（复用 ${result.reused} 章，新增 ${result.newly_extracted} 章）`
+        : `（新增 ${result.newly_extracted} 章）`;
+      toast(`🎭 已提取 ${result.profile_characters.length} 个角色 · ${result.window || ""} ${reusedInfo}`);
     } catch {
       toast("❌ 角色提取失败，请重试");
     } finally {
@@ -428,10 +438,12 @@ export function ProjectDetail({ projectId, onBack }: Props) {
     : "#64748b";
 
   // Computed layout values for 3-column resizable layout
-  // Show character panel if project has characters (generated via "生成角色档案")
-  // OR if a chapter is selected (show empty state prompt)
+  // Character panel: prefer the active chapter's merged profile;
+  // fall back to project-level characters; otherwise show empty state
   const projectCharacters = project?.characters ?? [];
-  const showCharacters = projectCharacters.length > 0 || !!activeChapter;
+  const activeChapterProfile = activeChapterId ? chapterProfiles[activeChapterId] : undefined;
+  const displayCharacters = activeChapterProfile ?? projectCharacters;
+  const showCharacters = displayCharacters.length > 0 || !!activeChapter;
   const HANDLE_W = 6; // each resize handle width in px
   const handlesW = showCharacters ? HANDLE_W * 4 : HANDLE_W * 2; // edge + inner per side
   const centerWidth = containerWidth - leftWidth - (showCharacters ? rightWidth : 0) - handlesW;
@@ -902,35 +914,42 @@ export function ProjectDetail({ projectId, onBack }: Props) {
           />
         )}
 
-        {/* RIGHT: Project-level character profiles (generated via "生成角色档案") */}
+        {/* RIGHT: Chapter character profile (window-merged, independent per chapter) */}
         {showCharacters && (
           <div style={{ width: rightWidth, flexShrink: 0 }}>
             <div className="character-panel character-panel--right">
               <div className="character-panel-header">
                 🎭 角色档案
+                {activeChapterProfile && activeChapter && (
+                  <span style={{ fontSize: "10px", fontWeight: 400, color: "#94a3b8", marginLeft: "6px" }}>
+                    第{activeChapter.chapter_num}章
+                  </span>
+                )}
               </div>
               <div className="character-list">
-                {projectCharacters.map((ch, i) => (
-                  <div key={ch.id || i} className="character-row">
-                    <div className="ch-avatar">{ch.name[0]}</div>
-                    <div className="ch-info">
-                      <div className="ch-name">
-                        {ch.name}
+                {displayCharacters.map((ch, i) => {
+                  const name = ch.name;
+                  const desc = ch.description ?? "";
+                  const traits = ch.traits ?? [];
+                  const aliases = ch.aliases ?? [];
+                  return (
+                    <div key={name || i} className="character-row">
+                      <div className="ch-avatar">{name[0] || "?"}</div>
+                      <div className="ch-info">
+                        <div className="ch-name">{name}</div>
+                        {desc && <div className="ch-role">{desc}</div>}
+                        {traits.length > 0 && (
+                          <div className="ch-traits">{traits.join(" · ")}</div>
+                        )}
+                        {aliases.length > 0 && (
+                          <div className="ch-traits" style={{ color: "#6366f1" }}>
+                            aka {aliases.join("、")}
+                          </div>
+                        )}
                       </div>
-                      {ch.description && (
-                        <div className="ch-role">{ch.description}</div>
-                      )}
-                      {ch.traits && ch.traits.length > 0 && (
-                        <div className="ch-traits">{ch.traits.join(" · ")}</div>
-                      )}
-                      {ch.aliases && ch.aliases.length > 0 && (
-                        <div className="ch-traits" style={{ color: "#6366f1" }}>
-                          aka {ch.aliases.join("、")}
-                        </div>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

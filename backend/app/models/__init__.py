@@ -68,7 +68,7 @@ class Chapter(Base):
     original_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     script_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     scenes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    characters_in_chapter: Mapped[dict | None] = mapped_column(JSON, nullable=True, name="characters")
+    characters_in_chapter: Mapped[list | None] = mapped_column(JSON, nullable=True, name="characters")
     status: Mapped[ChapterStatus] = mapped_column(
         SAEnum(ChapterStatus), default=ChapterStatus.PENDING
     )
@@ -116,7 +116,7 @@ class Adaptation(Base):
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     scenes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    characters_in_chapter: Mapped[dict | None] = mapped_column(JSON, nullable=True, name="characters")
+    characters_in_chapter: Mapped[list | None] = mapped_column(JSON, nullable=True, name="characters")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

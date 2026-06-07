@@ -85,8 +85,14 @@ async def extract_chapter_characters(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Extract characters for a single chapter using the 5-chapter sliding window
-    rule (chapters N-2 to N+2), then merge into the project's characters table.
+    Extract characters using the 5-chapter sliding window rule.
+
+    For each chapter in the window:
+    - If the chapter already has per-chapter character data → reuse (skip AI)
+    - Otherwise → one AI call for that single chapter → save to characters_in_chapter
+
+    Then merge all per-chapter data within the window into the target chapter's
+    profile, and update the project-level Character table with all chapters' data.
     """
     result = await db.execute(
         select(Chapter)
@@ -102,37 +108,81 @@ async def extract_chapter_characters(
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
 
-    # Build 5-chapter sliding window
+    # Build 5-chapter sliding window: max(1, N-2) to min(total, N+2)
     all_chapters = sorted(project.chapters, key=lambda c: c.chapter_num)
     chapter_num = chapter.chapter_num
+    max_chapter = max(c.chapter_num for c in all_chapters)
     win_start = max(1, chapter_num - 2)
-    win_end = min(
-        max(c.chapter_num for c in all_chapters), chapter_num + 2
-    )
-    window_texts = [
-        c.original_text for c in all_chapters
-        if win_start <= c.chapter_num <= win_end and c.original_text
+    win_end = min(max_chapter, chapter_num + 2)
+
+    window_chapters = [
+        c for c in all_chapters
+        if win_start <= c.chapter_num <= win_end
     ]
-    window_text = "\n\n".join(window_texts)
-    if not window_text.strip():
-        raise HTTPException(status_code=400, detail="章节没有文本内容")
 
-    # Extract characters
-    characters = await asyncio.to_thread(
-        ai_adapter.extract_characters_sync, window_text
-    )
+    if not window_chapters:
+        raise HTTPException(status_code=400, detail="窗口内没有章节")
 
-    if not characters:
-        raise HTTPException(status_code=500, detail="角色提取失败，未获取到任何角色")
+    # ── Step 1: For each window chapter, check / extract individual data ──
+    newly_extracted = 0
+    reused = 0
 
-    # Merge into characters table by name
+    for ch in window_chapters:
+        if ch.characters_in_chapter is not None:
+            reused += 1
+            continue
+        if not ch.original_text:
+            continue
+
+        logger.info(
+            "Extracting characters for chapter %d (%s)…",
+            ch.chapter_num, ch.title,
+        )
+        try:
+            chars = await asyncio.to_thread(
+                ai_adapter.extract_characters_sync, ch.original_text
+            )
+            if chars:
+                ch.characters_in_chapter = chars
+                newly_extracted += 1
+                logger.info(
+                    "Chapter %d: %d characters extracted",
+                    ch.chapter_num, len(chars),
+                )
+            else:
+                logger.warning(
+                    "Chapter %d returned no characters, marking as empty",
+                    ch.chapter_num,
+                )
+                ch.characters_in_chapter = []
+        except Exception:
+            logger.exception(
+                "AI extraction failed for chapter %d", ch.chapter_num,
+            )
+            continue
+
+    # ── Step 2: Merge per-chapter data in the window → target chapter profile ──
+    window_characters: list[dict] = []
+    for ch in window_chapters:
+        if ch.characters_in_chapter:
+            window_characters.extend(ch.characters_in_chapter)
+
+    profile = ai_adapter._deduplicate_characters(window_characters)
+
+    # ── Step 3: Merge ALL chapters' per-chapter data → project Character table ──
+    all_project_chars: list[dict] = []
+    for ch in all_chapters:
+        if ch.characters_in_chapter:
+            all_project_chars.extend(ch.characters_in_chapter)
+
+    merged_all = ai_adapter._deduplicate_characters(all_project_chars)
+
     existing_chars = {c.name: c for c in project.characters}
-    for c_data in characters:
+    for c_data in merged_all:
         name = c_data.get("name", "").strip()
         if not name:
             continue
         if name in existing_chars:
-            # Merge with existing
             existing = existing_chars[name]
             existing_aliases = list(set(existing.aliases or []) | set(c_data.get("aliases") or []))
             existing_traits = list(set(existing.traits or []) | set(c_data.get("traits") or []))
@@ -155,7 +205,7 @@ async def extract_chapter_characters(
 
     await db.commit()
 
-    # Reload to get updated list
+    # Reload to get updated project-level characters
     result = await db.execute(
         select(Project)
         .where(Project.id == project.id)
@@ -166,6 +216,9 @@ async def extract_chapter_characters(
     return {
         "chapter_id": chapter_id,
         "window": f"第{win_start}-{win_end}章",
+        "newly_extracted": newly_extracted,
+        "reused": reused,
+        "profile_characters": profile,
         "characters": [
             {
                 "id": c.id,

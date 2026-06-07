@@ -203,6 +203,9 @@ export async function loadDemo(): Promise<UploadResult> {
 export interface ExtractCharactersResult {
   chapter_id: string;
   window: string;
+  newly_extracted: number;
+  reused: number;
+  profile_characters: CharacterData[];
   characters: CharacterData[];
   count: number;
 }
