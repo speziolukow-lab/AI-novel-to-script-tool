@@ -278,11 +278,12 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   };
 
   const handleExtractCharacters = async () => {
+    if (!activeChapterId) return;
     setExtractingChars(true);
     try {
-      const result = await extractCharacters(projectId);
+      const result = await extractCharacters(activeChapterId);
       await fetchProject();
-      toast(`🎭 已提取 ${result.count} 个角色`);
+      toast(`🎭 已提取 ${result.count} 个角色（${result.window || ""}）`);
     } catch {
       toast("❌ 角色提取失败，请重试");
     } finally {

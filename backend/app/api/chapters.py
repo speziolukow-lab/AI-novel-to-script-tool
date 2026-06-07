@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.models import Project, Chapter, ChapterStatus, ProjectStatus, Adaptation
+from app.models import Project, Chapter, ChapterStatus, ProjectStatus, Adaptation, Character
 from app.services.ai_adapter import ai_adapter
 from app.services.text_parser import split_long_chapter
 from app.services.text_utils import number_paragraphs
@@ -76,6 +76,107 @@ async def adapt_chapter(
         "chapter_id": chapter.id,
         "status": "adapting",
         "message": f"章节「{chapter.title}」开始改编...",
+    }
+
+
+@router.post("/chapters/{chapter_id}/extract-characters")
+async def extract_chapter_characters(
+    chapter_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Extract characters for a single chapter using the 5-chapter sliding window
+    rule (chapters N-2 to N+2), then merge into the project's characters table.
+    """
+    result = await db.execute(
+        select(Chapter)
+        .where(Chapter.id == chapter_id)
+        .options(selectinload(Chapter.project).selectinload(Project.chapters),
+                 selectinload(Chapter.project).selectinload(Project.characters))
+    )
+    chapter = result.scalars().unique().first()
+    if not chapter:
+        raise HTTPException(status_code=404, detail="章节不存在")
+
+    project = chapter.project
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    # Build 5-chapter sliding window
+    all_chapters = sorted(project.chapters, key=lambda c: c.chapter_num)
+    chapter_num = chapter.chapter_num
+    win_start = max(1, chapter_num - 2)
+    win_end = min(
+        max(c.chapter_num for c in all_chapters), chapter_num + 2
+    )
+    window_texts = [
+        c.original_text for c in all_chapters
+        if win_start <= c.chapter_num <= win_end and c.original_text
+    ]
+    window_text = "\n\n".join(window_texts)
+    if not window_text.strip():
+        raise HTTPException(status_code=400, detail="章节没有文本内容")
+
+    # Extract characters
+    characters = await asyncio.to_thread(
+        ai_adapter.extract_characters_sync, window_text
+    )
+
+    if not characters:
+        raise HTTPException(status_code=500, detail="角色提取失败，未获取到任何角色")
+
+    # Merge into characters table by name
+    existing_chars = {c.name: c for c in project.characters}
+    for c_data in characters:
+        name = c_data.get("name", "").strip()
+        if not name:
+            continue
+        if name in existing_chars:
+            # Merge with existing
+            existing = existing_chars[name]
+            existing_aliases = list(set(existing.aliases or []) | set(c_data.get("aliases") or []))
+            existing_traits = list(set(existing.traits or []) | set(c_data.get("traits") or []))
+            new_desc = c_data.get("description") or ""
+            if len(new_desc) > len(existing.description or ""):
+                existing.description = new_desc
+            existing.aliases = existing_aliases
+            existing.traits = existing_traits
+        else:
+            char = Character(
+                project_id=project.id,
+                name=name,
+                aliases=c_data.get("aliases", []),
+                description=c_data.get("description", ""),
+                traits=c_data.get("traits", []),
+                relationships=c_data.get("relationships"),
+            )
+            db.add(char)
+            existing_chars[name] = char
+
+    await db.commit()
+
+    # Reload to get updated list
+    result = await db.execute(
+        select(Project)
+        .where(Project.id == project.id)
+        .options(selectinload(Project.characters))
+    )
+    project = result.scalars().unique().first()
+
+    return {
+        "chapter_id": chapter_id,
+        "window": f"第{win_start}-{win_end}章",
+        "characters": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "aliases": c.aliases,
+                "description": c.description,
+                "traits": c.traits,
+            }
+            for c in (project.characters if project else [])
+        ],
+        "count": len(project.characters if project else []),
     }
 
 

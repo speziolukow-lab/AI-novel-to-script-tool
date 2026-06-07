@@ -201,13 +201,14 @@ export async function loadDemo(): Promise<UploadResult> {
 }
 
 export interface ExtractCharactersResult {
-  project_id: string;
+  chapter_id: string;
+  window: string;
   characters: CharacterData[];
   count: number;
 }
 
-export async function extractCharacters(projectId: string): Promise<ExtractCharactersResult> {
-  const res = await fetch(`${BASE}/projects/${projectId}/extract-characters`, { method: "POST" });
+export async function extractCharacters(chapterId: string): Promise<ExtractCharactersResult> {
+  const res = await fetch(`${BASE}/chapters/${chapterId}/extract-characters`, { method: "POST" });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(detail.detail || "Character extraction failed");
