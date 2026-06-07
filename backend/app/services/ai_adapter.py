@@ -39,32 +39,13 @@ _ALIGNMENT_JSON_INSTRUCTION = """
 确保段落到场景的映射覆盖所有已改编的原著段落，不遗漏。"""
 
 _ELEMENTS_INSTRUCTION = """
-## 🔴 核心规则：elements 数组必须严格按原文顺序穿插（违反此规则则改编无效）
-
-这是本任务最重要的规则。每个场景使用一个 `elements` 数组，其中的元素必须**严格按原著故事发展的实际时间顺序**排列——描写和对白必须交替穿插，就像原文中描写和对话交替出现一样。
-
-数组中的元素只有两种类型：
+## 使用 elements 数组按原文顺序组织内容
+每个场景使用一个 `elements` 数组，按原著故事发展的时间顺序排列内容。
+数组中的元素为以下两种类型：
 - `{"type": "stage_direction", "text": "……"}` — 环境描写、动作描写、心理描写
 - `{"type": "dialogue", "character": "……", "line": "……", "parenthetical": null}` — 对白
 
-### ❌ 错误做法（严禁）：
-把所有的 stage_direction 堆在一起，然后所有的 dialogue 堆在一起。这样会导致剧本先是一大段描写，然后才是一大段对话，完全丢失了原文中描写与对话交替推进的节奏感。
-
-错误示例：
-```json
-"elements": [
-  {"type": "stage_direction", "text": "大厅内烛火摇曳"},
-  {"type": "stage_direction", "text": "张三冷笑一声"},
-  {"type": "stage_direction", "text": "李四站起身"},
-  {"type": "dialogue", "character": "张三", "line": "你来了。", "parenthetical": null},
-  {"type": "dialogue", "character": "李四", "line": "我一直在等你。", "parenthetical": null}
-]
-```
-
-### ✅ 正确做法：
-逐句对照原文，描写和对白交替穿插，还原原文的叙事节奏。
-
-正确示例：
+请按原文中描写和对话的实际出现顺序来排列 elements，让 stage_direction 和 dialogue 自然穿插：
 ```json
 "elements": [
   {"type": "stage_direction", "text": "大厅内烛火摇曳，窗外雨声淅沥"},
@@ -74,15 +55,7 @@ _ELEMENTS_INSTRUCTION = """
   {"type": "dialogue", "character": "张三", "line": "我知道。", "parenthetical": null},
   {"type": "stage_direction", "text": "李四站起身，走到窗前，沉默良久"}
 ]
-```
-
-注意这个正确示例中，dialogue 之间也穿插了 stage_direction（张三说完"我知道"后的动作描写），即使是连续两句对白之间也可能有细微的动作/神态描写。
-
-### ⚠️ 输出前自检：
-1. elements 中是否有连续 2 个以上的 stage_direction？如有，考虑在它们之间插入对话
-2. elements 中是否有连续 3 个以上的 dialogue？如有，考虑在它们之间插入动作/神态描写
-3. 原文中每段描写和每句对话在 elements 中的相对顺序是否与原文一致？
-4. 第一个 element 和最后一个 element 的类型是否合理（首尾通常是 stage_direction）？"""
+```"""
 
 SYSTEM_PROMPT_FILM = """你是一位资深的影视编剧，擅长将小说改编为剧本格式。
 
@@ -131,12 +104,6 @@ SYSTEM_PROMPT_FILM = """你是一位资深的影视编剧，擅长将小说改�
   - dialogue：`{"type": "dialogue", "character": "角色名", "line": "对白内容", "parenthetical": null}`（parenthetical 为括号内表演指示，无可为 null）
 """ + _ALIGNMENT_JSON_INSTRUCTION + """
 
-## 🔴 最终提醒（决定改编质量的关键）
-在输出 JSON 前，请逐段对照原文检查：原文中每一次"描写→对话→描写→对话"的交替，
-在你的 elements 数组中都必须体现为 stage_direction → dialogue → stage_direction → dialogue 的穿插顺序。
-**绝不允许** elements 前半段全是 stage_direction、后半段全是 dialogue 的情况出现。
-如果你发现自己这样做了，请立即重新排列，严格按照原文的时间线穿插。
-
 只返回 JSON，不要其他内容。"""
 
 SYSTEM_PROMPT_COMIC = """你是一位专业的漫画分镜师和编剧，擅长将小说改编为漫画分镜剧本。
@@ -180,12 +147,6 @@ SYSTEM_PROMPT_COMIC = """你是一位专业的漫画分镜师和编剧，擅长�
   - stage_direction：`{"type": "stage_direction", "text": "[景别]：画面描述"}`
   - dialogue：`{"type": "dialogue", "character": "角色名", "line": "对白", "parenthetical": null}`""" + _ALIGNMENT_JSON_INSTRUCTION + """
 
-## 🔴 最终提醒（决定改编质量的关键）
-在输出 JSON 前，请逐段对照原文检查：原文中每一次"描写→对话→描写→对话"的交替，
-在你的 elements 数组中都必须体现为 stage_direction → dialogue → stage_direction → dialogue 的穿插顺序。
-**绝不允许** elements 前半段全是 stage_direction、后半段全是 dialogue 的情况出现。
-如果你发现自己这样做了，请立即重新排列，严格按照原文的时间线穿插。
-
 只返回 JSON，不要其他内容。"""
 
 SYSTEM_PROMPT_STAGE = """你是一位舞台剧编剧，擅长将小说改编为舞台剧剧本。
@@ -227,12 +188,6 @@ SYSTEM_PROMPT_STAGE = """你是一位舞台剧编剧，擅长将小说改编为�
 - `elements`：按原文时间顺序排列的内容数组
   - stage_direction：`{"type": "stage_direction", "text": "走位/动作描述"}`
   - dialogue：`{"type": "dialogue", "character": "角色名", "line": "台词", "parenthetical": null}`""" + _ALIGNMENT_JSON_INSTRUCTION + """
-
-## 🔴 最终提醒（决定改编质量的关键）
-在输出 JSON 前，请逐段对照原文检查：原文中每一次"描写→对话→描写→对话"的交替，
-在你的 elements 数组中都必须体现为 stage_direction → dialogue → stage_direction → dialogue 的穿插顺序。
-**绝不允许** elements 前半段全是 stage_direction、后半段全是 dialogue 的情况出现。
-如果你发现自己这样做了，请立即重新排列，严格按照原文的时间线穿插。
 
 只返回 JSON，不要其他内容。"""
 
@@ -381,7 +336,7 @@ class AIAdapter:
         system_prompt = STYLE_PROMPTS.get(style, SYSTEM_PROMPT_FILM)
 
         user_lines = [
-            "## ⚠️ 最重要提醒：请严格按原文中描写与对话的实际出现顺序穿插 elements，不要把 stage_direction 堆在一起。详见 system prompt 中的 elements 规则。\n",
+            "## 提示：请按原文顺序自然穿插 stage_direction 和 dialogue，避免全部描写堆在一起、全部对白堆在一起。\n",
         ]
         if character_context:
             user_lines.append(f"## 已知人物信息\n{character_context}\n")
@@ -633,7 +588,7 @@ class AIAdapter:
         system_prompt = STYLE_PROMPTS.get(style, SYSTEM_PROMPT_FILM)
 
         user_lines = [
-            "## ⚠️ 最重要提醒：请严格按原文中描写与对话的实际出现顺序穿插 elements，不要把 stage_direction 堆在一起。详见 system prompt 中的 elements 规则。\n",
+            "## 提示：请按原文顺序自然穿插 stage_direction 和 dialogue，避免全部描写堆在一起、全部对白堆在一起。\n",
         ]
         if character_context:
             user_lines.append(f"## 已知人物信息\n{character_context}\n")
@@ -691,7 +646,7 @@ class AIAdapter:
         system_prompt = STYLE_PROMPTS.get(style, SYSTEM_PROMPT_FILM)
 
         user_lines = [
-            "## ⚠️ 最重要提醒：请严格按原文中描写与对话的实际出现顺序穿插 elements，不要把 stage_direction 堆在一起。详见 system prompt 中的 elements 规则。\n",
+            "## 提示：请按原文顺序自然穿插 stage_direction 和 dialogue，避免全部描写堆在一起、全部对白堆在一起。\n",
         ]
         if character_context:
             user_lines.append(f"## 已知人物信息\n{character_context}\n")
