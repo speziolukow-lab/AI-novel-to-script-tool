@@ -684,9 +684,14 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                   {/* Edit button */}
                   {activeAdaptation.status === "completed" && !editMode && (
                     <button
-                      className="btn-adapt-one"
                       onClick={enterEditMode}
-                      style={{ background: "#f59e0b", border: "1px solid #d97706" }}
+                      style={{
+                        padding: "6px 14px", borderRadius: "6px",
+                        fontSize: "12px", fontWeight: 600,
+                        background: "#f59e0b", color: "#fff",
+                        border: "1px solid #d97706",
+                        cursor: "pointer", transition: "150ms ease",
+                      }}
                     >
                       ✏️ 编辑
                     </button>
@@ -697,15 +702,25 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                       <button
                         onClick={handleSaveEdit}
                         disabled={saving}
-                        className="btn-adapt-one"
-                        style={{ background: "#22c55e", border: "1px solid #16a34a" }}
+                        style={{
+                          padding: "6px 14px", borderRadius: "6px",
+                          fontSize: "12px", fontWeight: 600,
+                          background: "#16a34a", color: "#fff",
+                          border: "1px solid #15803d",
+                          cursor: "pointer", transition: "150ms ease",
+                        }}
                       >
                         {saving ? "保存中..." : "💾 保存"}
                       </button>
                       <button
                         onClick={handleCancelEdit}
-                        className="btn-adapt-one"
-                        style={{ background: "#64748b", border: "1px solid #475569" }}
+                        style={{
+                          padding: "6px 14px", borderRadius: "6px",
+                          fontSize: "12px", fontWeight: 600,
+                          background: "#fff", color: "#475569",
+                          border: "1px solid #cbd5e1",
+                          cursor: "pointer", transition: "150ms ease",
+                        }}
                       >
                         取消
                       </button>
