@@ -38,6 +38,17 @@ _ALIGNMENT_JSON_INSTRUCTION = """
 - `para_end`：结束段落编号（包含）
 确保段落到场景的映射覆盖所有已改编的原著段落，不遗漏。"""
 
+_STAGE_DIRECTION_INSTRUCTION = """
+## ⚠️ 舞台指示的穿插位置（极其重要）
+`stage_directions` 数组中每条是一个对象，包含 `text`（文本）和 `position`（插入位置）：
+- `position` 表示该舞台指示插入在**第几条对话之前**
+- `position: 0` = 第一条对话之前（场景开头）
+- `position: 1` = 第一条对话之后、第二条对话之前
+- 以此类推
+- **严禁将所有舞台指示堆在 position: 0**！必须根据原著中的实际发生顺序，
+  将舞台指示穿插到对应的对话之间。原著中发生在对话中间的描写，必须放在
+  对应对话的 position 位置。"""
+
 SYSTEM_PROMPT_FILM = """你是一位资深的影视编剧，擅长将小说改编为剧本格式。
 
 ## 改编规则：
@@ -46,6 +57,7 @@ SYSTEM_PROMPT_FILM = """你是一位资深的影视编剧，擅长将小说改�
 3. **对白精炼**：保留人物原话，可适当精炼但不改变原意，语气、个性要保留
 4. **场景拆分**：每次场景切换（时间/地点变化）都拆分为新的一场
 5. **JSON 输出**：严格按照以下 JSON 格式输出
+""" + _STAGE_DIRECTION_INSTRUCTION + """
 
 ## 输出格式（JSON）：
 返回一个 JSON 对象，包含 `scenes` 和 `alignment` 两个字段：
@@ -58,15 +70,20 @@ SYSTEM_PROMPT_FILM = """你是一位资深的影视编剧，擅长将小说改�
       "time": "黄昏",
       "location": "城主府大厅",
       "characters": ["张三", "李四"],
-      "stage_directions": ["大厅内烛火摇曳，窗外雨声淅沥"],
+      "stage_directions": [
+        {"text": "大厅内烛火摇曳，窗外雨声淅沥", "position": 0},
+        {"text": "张三冷笑一声，端起酒杯一饮而尽", "position": 1},
+        {"text": "李四站起身，走到窗前", "position": 2}
+      ],
       "dialogues": [
         {"character": "张三", "line": "你来了。", "parenthetical": "冷冷地"},
-        {"character": "李四", "line": "我一直在等你。", "parenthetical": null}
+        {"character": "李四", "line": "我一直在等你。", "parenthetical": null},
+        {"character": "张三", "line": "我知道。", "parenthetical": null}
       ]
     }
   ],
   "alignment": [
-    {"scene": 1, "para_start": 0, "para_end": 3}
+    {"scene": 1, "para_start": 0, "para_end": 6}
   ]
 }
 ```
@@ -76,7 +93,7 @@ SYSTEM_PROMPT_FILM = """你是一位资深的影视编剧，擅长将小说改�
 - `time`：时间描述（如"黄昏"、"深夜"），未知填 null
 - `location`：地点描述，未知填 null
 - `characters`：出场人物姓名数组（顿号分隔的拆分为数组元素）
-- `stage_directions`：舞台指示数组，每条为一段环境/动作/心理描写（不含【】符号）
+- `stage_directions`：对象数组，`text` 为舞台指示文本（不含【】符号），`position` 为插入位置（0=第一条对话前，1=第一条对话后第二条对话前，以此类推）
 - `dialogues`：对白数组，`parenthetical` 为角色名后括号内的表演指示，无可为 null""" + _ALIGNMENT_JSON_INSTRUCTION + """
 
 只返回 JSON，不要其他内容。"""
@@ -102,7 +119,10 @@ SYSTEM_PROMPT_COMIC = """你是一位专业的漫画分镜师和编剧，擅长�
       "time": null,
       "location": "城主府大厅",
       "characters": ["张三", "李四"],
-      "stage_directions": ["全景：大厅内烛火摇曳", "特写：张三紧握的拳头"],
+      "stage_directions": [
+        {"text": "全景：大厅内烛火摇曳", "position": 0},
+        {"text": "特写：张三紧握的拳头", "position": 1}
+      ],
       "dialogues": [
         {"character": "张三", "line": "你来了。", "parenthetical": "冷冷地"},
         {"character": "李四", "line": "我一直在等你。", "parenthetical": null}
@@ -116,7 +136,7 @@ SYSTEM_PROMPT_COMIC = """你是一位专业的漫画分镜师和编剧，擅长�
 ```
 
 ## 字段说明
-- `stage_directions`：画面描述数组，每条格式为"[景别]：画面描述"（如"全景：..."、"特写：..."）
+- `stage_directions`：对象数组，`text` 为画面描述（格式"[景别]：画面描述"），`position` 为插入位置（0=第一条对话前，1=第一条对话后第二条对话前，以此类推）
 - `dialogues`：对话气泡内容，`parenthetical` 为角色名后括号内的表演指示，无可为 null""" + _ALIGNMENT_JSON_INSTRUCTION + """
 
 只返回 JSON，不要其他内容。"""
@@ -129,6 +149,7 @@ SYSTEM_PROMPT_STAGE = """你是一位舞台剧编剧，擅长将小说改编为�
 3. **台词节奏**：台词要有舞台感和韵律感
 4. **动作指示**：标注演员走位和动作
 5. **JSON 输出**：严格按照以下 JSON 格式输出
+""" + _STAGE_DIRECTION_INSTRUCTION + """
 
 ## 输出格式（JSON）：
 返回一个 JSON 对象，包含 `scenes` 和 `alignment` 两个字段：
@@ -141,7 +162,10 @@ SYSTEM_PROMPT_STAGE = """你是一位舞台剧编剧，擅长将小说改编为�
       "time": null,
       "location": "城主府大厅",
       "characters": ["张三", "李四"],
-      "stage_directions": ["张三从左门入，缓步走向舞台中央", "李四从右侧暗处现身"],
+      "stage_directions": [
+        {"text": "张三从左门入，缓步走向舞台中央", "position": 0},
+        {"text": "李四从右侧暗处现身", "position": 2}
+      ],
       "dialogues": [
         {"character": "张三", "line": "你来了。", "parenthetical": "低沉地"},
         {"character": "李四", "line": "我一直在等你。", "parenthetical": null}
@@ -155,7 +179,7 @@ SYSTEM_PROMPT_STAGE = """你是一位舞台剧编剧，擅长将小说改编为�
 ```
 
 ## 字段说明
-- `stage_directions`：舞台动作/走位指示数组（如"[左]张三入场"、"灯光渐暗"）
+- `stage_directions`：对象数组，`text` 为舞台动作/走位指示，`position` 为插入位置（0=第一条对话前，1=第一条对话后第二条对话前，以此类推）
 - `dialogues`：台词数组，`parenthetical` 为角色名后括号内的表演指示，无可为 null""" + _ALIGNMENT_JSON_INSTRUCTION + """
 
 只返回 JSON，不要其他内容。"""
@@ -217,6 +241,34 @@ def structured_scenes_to_prose(scenes: list[dict], style: str = "film") -> str:
         stage_dirs = scene.get("stage_directions") or []
         dialogues = scene.get("dialogues") or []
 
+        # Normalize stage directions to [{text, position}]
+        normalized_dirs: list[dict] = []
+        for item in stage_dirs:
+            if isinstance(item, str):
+                normalized_dirs.append({"text": item, "position": 0})
+            elif isinstance(item, dict):
+                normalized_dirs.append({
+                    "text": item.get("text", ""),
+                    "position": item.get("position", 0),
+                })
+        # Sort by position ascending
+        normalized_dirs.sort(key=lambda d: d.get("position", 0))
+
+        # Build position→list of direction texts map
+        from collections import defaultdict
+        dirs_by_pos: dict[int, list[str]] = defaultdict(list)
+        for d in normalized_dirs:
+            pos = max(0, d.get("position", 0))
+            dirs_by_pos[pos].append(d.get("text", ""))
+
+        def _render_direction(text: str) -> str:
+            if style == "film":
+                return f"【{text}】"
+            elif style == "comic":
+                return f"[画面：{text}]"
+            else:
+                return f"[{text}]"
+
         if style == "film":
             lines.append(f"第 {sn} 场")
             if time_val:
@@ -225,26 +277,10 @@ def structured_scenes_to_prose(scenes: list[dict], style: str = "film") -> str:
                 lines.append(f"地点：{location}")
             if characters:
                 lines.append(f"人物：{'、'.join(characters)}")
-            for sd in stage_dirs:
-                lines.append(f"【{sd}】")
-            for d in dialogues:
-                char = d.get("character", "")
-                line = d.get("line", "")
-                paren = d.get("parenthetical")
-                if paren:
-                    lines.append(f"{char}：（{paren}）{line}")
-                else:
-                    lines.append(f"{char}：{line}")
 
         elif style == "comic":
             loc_str = f" - {location}" if location else ""
             lines.append(f"第 {sn} 场{loc_str}")
-            for sd in stage_dirs:
-                lines.append(f"[画面：{sd}]")
-            for d in dialogues:
-                char = d.get("character", "")
-                line = d.get("line", "")
-                lines.append(f"{char}：{line}")
 
         elif style == "stage":
             lines.append(f"第一幕 第{sn}场")
@@ -252,16 +288,33 @@ def structured_scenes_to_prose(scenes: list[dict], style: str = "film") -> str:
                 lines.append(f"场景：{location}")
             if characters:
                 lines.append(f"出场人物：{'、'.join(characters)}")
-            for sd in stage_dirs:
-                lines.append(f"[{sd}]")
-            for d in dialogues:
-                char = d.get("character", "")
-                line = d.get("line", "")
-                paren = d.get("parenthetical")
+
+        # Interleave directions and dialogues
+        # Directions BEFORE first dialogue (position 0)
+        for text in dirs_by_pos.get(0, []):
+            lines.append(_render_direction(text))
+
+        for di, d in enumerate(dialogues):
+            char = d.get("character", "")
+            line = d.get("line", "")
+            paren = d.get("parenthetical")
+
+            if style == "film":
+                if paren:
+                    lines.append(f"{char}：（{paren}）{line}")
+                else:
+                    lines.append(f"{char}：{line}")
+            elif style == "comic":
+                lines.append(f"{char}：{line}")
+            elif style == "stage":
                 if paren:
                     lines.append(f"{char}：（{paren}）{line}")
                 else:
                     lines.append(f"{char}：（{line}）")
+
+            # Directions after this dialogue (position di+1)
+            for text in dirs_by_pos.get(di + 1, []):
+                lines.append(_render_direction(text))
 
         parts.append("\n".join(lines))
 
@@ -550,6 +603,20 @@ class AIAdapter:
         parsed = self._parse_adaptation_json(raw)
         structured_scenes: list[dict] = parsed.get("scenes", [])
         alignment: list[dict] = parsed.get("alignment", [])
+
+        # Normalize stage_directions to {text, position} format
+        for scene in structured_scenes:
+            raw_dirs = scene.get("stage_directions", [])
+            normalized: list[dict] = []
+            for item in raw_dirs:
+                if isinstance(item, str):
+                    normalized.append({"text": item, "position": 0})
+                elif isinstance(item, dict) and "text" in item:
+                    normalized.append({
+                        "text": item["text"],
+                        "position": item.get("position", 0),
+                    })
+            scene["stage_directions"] = normalized
 
         # Render prose text from structured scenes
         prose_text = structured_scenes_to_prose(structured_scenes, style)
