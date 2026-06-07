@@ -1,6 +1,6 @@
 # AI 小说转剧本工具 — 技术架构文档
 
-> **版本**: 0.1.0 (MVP) | **日期**: 2026-06-06 | **更新**: 2026-06-06 (同步对齐映射)
+> **版本**: 0.2.0 (MVP) | **日期**: 2026-06-06 | **更新**: 2026-06-07 (批量删除 + 剧本编辑 + 舞台指示穿插 + 批量改编风格修复)
 
 ---
 
@@ -248,12 +248,19 @@ PENDING → ADAPTING → COMPLETED
 | `POST` | `/api/upload` | 上传小说文件 | multipart file → `UploadResult` |
 | `GET` | `/api/projects` | 项目列表 | → `ProjectSummary[]` |
 | `GET` | `/api/projects/{id}` | 项目详情 (含章节+角色) | → `ProjectDetail` |
-| `DELETE` | `/api/projects/{id}` | 删除项目 | → 204 |
+| `DELETE` | `/api/projects/{id}` | 删除单个项目 | → `{detail}` |
+| `POST` | `/api/projects/delete-batch` | 批量删除项目 | `{project_ids}` → `{deleted_count}` |
+| `POST` | `/api/projects/{id}/adapt-batch` | 批量改编章节 (1-5章) | `{chapter_ids, style}` → `{chapters_queued}` |
 | `POST` | `/api/chapters/{id}/adapt` | 改编单章 | → `{chapter_id, status}` |
-| `POST` | `/api/projects/{id}/adapt-all` | 改编全部章节 | → `{project_id, chapters_queued}` |
+| `PUT` | `/api/chapters/{id}/adaptations/{style}` | 手动更新剧本内容 | `{script_text}` → `{chapter_id, style, message}` |
 | `GET` | `/api/projects/{id}/export/markdown` | 导出 Markdown | → file download |
 | `GET` | `/api/projects/{id}/export/txt` | 导出纯文本 | → file download |
 | `GET` | `/api/projects/{id}/export/docx` | 导出 Word 文档 | → file download |
+| `GET` | `/api/projects/{id}/export/yaml` | 导出 YAML 结构化数据 | → file download |
+| `GET` | `/api/chapters/{id}/export/markdown` | 单章导出 Markdown | → file download |
+| `GET` | `/api/chapters/{id}/export/txt` | 单章导出 TXT | → file download |
+| `GET` | `/api/chapters/{id}/export/docx` | 单章导出 DOCX | → file download |
+| `GET` | `/api/chapters/{id}/export/yaml` | 单章导出 YAML | → file download |
 | `POST` | `/api/demo` | 加载示例小说 | → `UploadResult` |
 | `PUT` | `/api/projects/{id}/style` | 更新项目风格 | → `{project_id, style, message}` |
 | `GET` | `/api/health` | 健康检查 | → `{status, version}` |
@@ -484,15 +491,16 @@ AI 角色: **资深影视编剧**
 2. 叙述描述 → `【舞台指示】` (心理/动作/环境描写)
 3. 对白精炼，保留原意和语气
 4. 时间/地点变化时自动拆分场景
-5. 严格输出格式:
+5. **舞台指示穿插**: 使用 `{text, position}` 对象数组，按原著顺序将方向穿插到对话之间（0=第一条对话前，1=第一条后第二条前，以此类推）
 
 ```
 第 [序号] 场
 时间：[time]
 地点：[location]
 人物：[name1、name2]
-【舞台指示内容】
+【场景开头描写】
 角色A：（对白）
+【动作描写，穿插在对话之间】
 角色B：（对白）
 ---
 ```
@@ -544,12 +552,12 @@ AI 角色: **舞台剧编剧**
 | 组件 | 功能 | 关键特性 |
 |------|------|----------|
 | `App.tsx` | 根组件 + 页面状态机 | `page` + `selectedProjectId` 状态管理 |
-| `ProjectList.tsx` | 项目卡片网格 | 加载示例、空状态、删除确认 |
+| `ProjectList.tsx` | 项目卡片网格 | 加载示例、空状态、单个删除确认、批量删除（复选+确认） |
 | `UploadNovel.tsx` | 拖拽上传 | .txt/.epub 验证、进度动画 |
-| `ProjectDetail.tsx` | 项目详情（双栏） | 风格切换、原文/剧本对比、进度动画、质量 Warning、错误展示、防跳章 |
+| `ProjectDetail.tsx` | 项目详情（三栏可调） | 风格切换、原文/剧本对比、批量改编、单章改编、剧本编辑模式（编辑/保存/取消）、进度动画、质量 Warning、错误展示、防跳章 |
 | `ScriptViewer.tsx` | 剧本语法高亮 | 6 类 CSS 规则，支持 highlightLines 质量高亮，原文/剧本双模式 |
 | `Toast.tsx` | Toast 通知 | Context Provider 模式，自动消失 |
-| `DeleteModal.tsx` | 删除确认 | 模态框覆盖层，显示项目名称 |
+| `DeleteModal.tsx` | 删除确认 | 模态框覆盖层，显示项目名称，单删/批量共用 |
 
 ### 9.2 导航状态机
 
@@ -645,7 +653,12 @@ AI 角色: **舞台剧编剧**
 - ✅ **Adaptation 表多风格独立存储** — 每章 × 每风格独立记录，切换风格不覆盖
 - ✅ **质量检查问题高亮** — 剧本视图中黄色左边框高亮问题行，点击警告项 scrollIntoView 定位
 - ✅ **AI 原文-剧本对齐映射** — LLM 改编时输出段落→场次对应关系，原文高亮精准定位到问题段落（替换旧启发式）
-- ✅ **YAML Schema 输出** — 两遍 AI 流水线：第一遍生成散文格式剧本（前端展示），第二遍转换为结构化 YAML（导出 + 程序化处理），详见 `docs/yaml-schema.md`
+- ✅ **YAML 导出** — 全本/单章 YAML 格式导出，含结构化场景数据
+- ✅ **批量删除项目** — 项目列表页复选+确认批量删除
+- ✅ **批量改编优化** — 支持选择 1-5 章批量改编，风格参数正确传递
+- ✅ **剧本手动编辑** — 已改编剧本支持在线编辑保存，含未修改检测
+- ✅ **舞台指示穿插渲染** — stage_directions 采用 `{text, position}` 对象数组，按原著顺序穿插到对话之间
+- ✅ **光标优化** — 页面默认 `cursor: default`，消除文本 I-beam 光标
 
 ---
 
