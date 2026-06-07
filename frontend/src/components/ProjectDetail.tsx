@@ -282,6 +282,10 @@ export function ProjectDetail({ projectId, onBack }: Props) {
 
   const handleSaveEdit = async () => {
     if (!activeChapter || !activeChapterId) return;
+    if (editText === (activeAdaptation.script_text ?? "")) {
+      toast("ℹ️ 未检测到修改，请编辑后再保存");
+      return;
+    }
     setSaving(true);
     try {
       await updateAdaptationScript(activeChapterId, style, editText);
