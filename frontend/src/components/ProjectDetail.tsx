@@ -911,9 +911,6 @@ export function ProjectDetail({ projectId, onBack }: Props) {
             <div className="character-panel character-panel--right">
               <div className="character-panel-header">
                 🎭 角色档案
-                <span style={{ fontSize: "10px", color: "#a78bfa" }}>
-                  全本 {projectCharacters.length} 人
-                </span>
               </div>
               <div className="character-list">
                 {projectCharacters.map((ch, i) => (
@@ -957,9 +954,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                 <p style={{ fontSize: "32px", marginBottom: "8px" }}>🎭</p>
                 <p>尚未生成角色档案</p>
                 <p style={{ fontSize: "11px", marginTop: "4px" }}>
-                  点击上方「🎭 角色档案」按钮
-                  <br />
-                  AI 将自动提取全本人物信息
+                  点击上方「🎭 角色档案」按钮生成
                 </p>
               </div>
             </div>
