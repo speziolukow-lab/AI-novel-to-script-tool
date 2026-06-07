@@ -2,6 +2,12 @@
 
 基于大语言模型（LLM）的智能小说改编剧本平台。
 
+
+
+## 演示视频网页链接（B站）
+https://www.bilibili.com/video/BV1GDEt6mE42/?vd_source=8bdfef16e1ca820d3ba15206cf1bce39
+
+
 ## 核心功能
 
 - 📖 **小说上传**：支持 `.txt` / `.epub` 格式，自动识别章节
