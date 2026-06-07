@@ -195,6 +195,21 @@ export function ProjectDetail({ projectId, onBack }: Props) {
 
   useEffect(() => { fetchProject(); }, [fetchProject]);
 
+  // Sync chapter character profiles from project data (persisted in DB)
+  useEffect(() => {
+    if (!project) return;
+    setChapterProfiles((prev) => {
+      const fromApi: Record<string, CharacterData[]> = {};
+      for (const ch of project.chapters) {
+        if (ch.characters && Array.isArray(ch.characters) && ch.characters.length > 0) {
+          fromApi[ch.id] = ch.characters as CharacterData[];
+        }
+      }
+      // Prefer session state (just extracted), fill missing from API
+      return { ...fromApi, ...prev };
+    });
+  }, [project]);
+
   useEffect(() => {
     if (!project || project.status !== "adapting") return;
     const interval = setInterval(fetchProject, 3000);
