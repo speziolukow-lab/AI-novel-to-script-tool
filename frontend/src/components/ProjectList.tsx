@@ -44,12 +44,16 @@ export function ProjectList({ onProjectClick, onLoadDemo, onNavigateUpload }: Pr
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    const targetId = deleteTarget.id;
     try {
-      await deleteProject(deleteTarget.id);
-      setProjects((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      await deleteProject(targetId);
+      setProjects((prev) => prev.filter((p) => p.id !== targetId));
       toast("🗑️ 项目已删除");
     } catch {
-      setError("删除失败");
+      // 不要用 setError 摧毁整个列表 UI —— 后端可能已成功删除，
+      // 只是响应因网络波动未到达前端。刷新列表获取真实状态。
+      toast("⚠️ 删除请求可能未完全确认，正在刷新列表…");
+      await fetchProjects();
     } finally {
       setDeleteTarget(null);
     }
@@ -86,7 +90,9 @@ export function ProjectList({ onProjectClick, onLoadDemo, onNavigateUpload }: Pr
       setProjects((prev) => prev.filter((p) => !selectedIds.has(p.id)));
       toast(`🗑️ 已删除 ${ids.length} 个项目`);
     } catch {
-      setError("批量删除失败");
+      // 同样不摧毁 UI，刷新列表获取后端真实状态
+      toast("⚠️ 批量删除请求可能未完全确认，正在刷新列表…");
+      await fetchProjects();
     } finally {
       exitBatchMode();
     }

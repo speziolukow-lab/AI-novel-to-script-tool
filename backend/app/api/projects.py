@@ -141,11 +141,27 @@ async def update_project_style(
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
     """Delete a project and all associated data."""
-    result = await db.execute(select(Project).where(Project.id == project_id))
-    project = result.scalar_one_or_none()
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(Project)
+        .where(Project.id == project_id)
+        .options(
+            selectinload(Project.chapters).selectinload(Chapter.adaptations),
+            selectinload(Project.characters),
+        )
+    )
+    project = result.scalars().unique().first()
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
 
+    # 显式删除关联对象，确保 ORM session 状态一致
+    for chapter in list(project.chapters or []):
+        for adaptation in list(chapter.adaptations or []):
+            await db.delete(adaptation)
+        await db.delete(chapter)
+    for character in list(project.characters or []):
+        await db.delete(character)
     await db.delete(project)
     await db.commit()
     return {"detail": "项目已删除"}
@@ -164,19 +180,33 @@ async def delete_projects_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple projects at once."""
+    from sqlalchemy.orm import selectinload
+
     if not req.project_ids:
         raise HTTPException(status_code=400, detail="请至少选择一个项目")
 
     result = await db.execute(
-        select(Project).where(Project.id.in_(req.project_ids))
+        select(Project)
+        .where(Project.id.in_(req.project_ids))
+        .options(
+            selectinload(Project.chapters).selectinload(Chapter.adaptations),
+            selectinload(Project.characters),
+        )
     )
-    projects = result.scalars().all()
+    projects = result.scalars().unique().all()
 
     if not projects:
         raise HTTPException(status_code=404, detail="未找到所选项目")
 
     deleted_count = 0
     for project in projects:
+        # 显式删除关联对象，确保 ORM session 状态一致
+        for chapter in list(project.chapters or []):
+            for adaptation in list(chapter.adaptations or []):
+                await db.delete(adaptation)
+            await db.delete(chapter)
+        for character in list(project.characters or []):
+            await db.delete(character)
         await db.delete(project)
         deleted_count += 1
     await db.commit()
