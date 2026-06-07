@@ -87,6 +87,42 @@ class AdaptBatchRequest(BaseModel):
     style: str = ""  # optional; if not provided, uses project.style
 
 
+class UpdateAdaptationRequest(BaseModel):
+    script_text: str
+
+
+@router.put("/chapters/{chapter_id}/adaptations/{style}")
+async def update_adaptation(
+    chapter_id: str,
+    style: str,
+    req: UpdateAdaptationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually update the script text for a chapter's adaptation."""
+    if style not in ("film", "comic", "stage"):
+        raise HTTPException(status_code=422, detail=f"不支持的风格：{style}")
+
+    result = await db.execute(
+        select(Adaptation).where(
+            Adaptation.chapter_id == chapter_id,
+            Adaptation.style == style,
+        )
+    )
+    adaptation = result.scalar_one_or_none()
+    if not adaptation:
+        raise HTTPException(status_code=404, detail="改编记录不存在，请先执行改编")
+
+    adaptation.script_text = req.script_text
+    adaptation.status = ChapterStatus.COMPLETED
+    await db.commit()
+
+    return {
+        "chapter_id": chapter_id,
+        "style": style,
+        "message": "剧本已更新",
+    }
+
+
 @router.post("/projects/{project_id}/adapt-batch")
 async def adapt_batch_chapters(
     project_id: str,

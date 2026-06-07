@@ -4,6 +4,7 @@ import {
   adaptChapter,
   adaptBatchChapters,
   updateStyle,
+  updateAdaptationScript,
   exportMarkdownUrl,
   exportDocxUrl,
   exportTxtUrl,
@@ -99,6 +100,9 @@ export function ProjectDetail({ projectId, onBack }: Props) {
   const [viewMode, setViewMode] = useState<"original" | "script">("script");
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [editMode, setEditMode] = useState(false);
+  const [editText, setEditText] = useState("");
+  const [saving, setSaving] = useState(false);
   const adaptTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
@@ -269,6 +273,31 @@ export function ProjectDetail({ projectId, onBack }: Props) {
       setAdapting(null);
       stopProgress();
     }
+  };
+
+  const enterEditMode = () => {
+    setEditText(activeAdaptation.script_text ?? "");
+    setEditMode(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!activeChapter || !activeChapterId) return;
+    setSaving(true);
+    try {
+      await updateAdaptationScript(activeChapterId, style, editText);
+      setEditMode(false);
+      await fetchProject();
+      toast("✅ 剧本已保存");
+    } catch {
+      toast("❌ 保存失败，请重试");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditMode(false);
+    setEditText("");
   };
 
   const toggleChapterSelect = (chapterId: string) => {
@@ -643,7 +672,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                     <span className="adapt-status failed">❌ 改编失败</span>
                   ) : null}
                   {/* Always show adapt button unless adapting this specific chapter */}
-                  {adapting !== activeChapter.id && (
+                  {adapting !== activeChapter.id && !editMode && (
                     <button
                       className="btn-adapt-one"
                       onClick={() => handleAdaptChapter(activeChapter.id)}
@@ -651,6 +680,36 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                     >
                       改编本章
                     </button>
+                  )}
+                  {/* Edit button */}
+                  {activeAdaptation.status === "completed" && !editMode && (
+                    <button
+                      className="btn-adapt-one"
+                      onClick={enterEditMode}
+                      style={{ background: "#f59e0b", border: "1px solid #d97706" }}
+                    >
+                      ✏️ 编辑
+                    </button>
+                  )}
+                  {/* Save / Cancel in edit mode */}
+                  {editMode && (
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        onClick={handleSaveEdit}
+                        disabled={saving}
+                        className="btn-adapt-one"
+                        style={{ background: "#22c55e", border: "1px solid #16a34a" }}
+                      >
+                        {saving ? "保存中..." : "💾 保存"}
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        className="btn-adapt-one"
+                        style={{ background: "#64748b", border: "1px solid #475569" }}
+                      >
+                        取消
+                      </button>
+                    </div>
                   )}
                   {/* Per-chapter export */}
                   {activeAdaptation.status === "completed" && (
@@ -714,7 +773,23 @@ export function ProjectDetail({ projectId, onBack }: Props) {
               )}
 
               {/* Content or progress overlay */}
-              {adapting === activeChapter.id ? (
+              {editMode ? (
+                <div className="script-content" style={{ padding: "0" }}>
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    style={{
+                      width: "100%", height: "calc(100vh - 280px)",
+                      padding: "16px", border: "2px solid #f59e0b",
+                      borderRadius: "8px", fontSize: "14px",
+                      fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', monospace",
+                      lineHeight: "1.8", resize: "vertical",
+                      background: "#fffbeb", color: "#1e293b",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+              ) : adapting === activeChapter.id ? (
                 <div className="adapt-progress-overlay">
                   <div className="spinner" />
                   <div className="adapt-stage-text">{ADAPT_STAGES[adaptStage] || "处理中..."}</div>
