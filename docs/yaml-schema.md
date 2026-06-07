@@ -9,7 +9,7 @@
 ### 2.1 顶层结构
 
 ```yaml
-# 剧本 YAML Schema v3.0
+# 剧本 YAML Schema v4.0
 project:
   title: string         # 项目/小说标题
   author: string        # 原著作者
@@ -26,22 +26,30 @@ chapters:
 ### 2.2 场景（Scene）
 
 ```yaml
-scene_num: int                      # 场景序号（从 1 开始，跨章节递增）
-time: string | null                 # 时间描述（如 "黄昏"、"深夜"）
-location: string | null             # 地点描述（如 "城主府大厅"）
-characters: string[]                # 出场人物列表
-stage_directions: StageDirection[]  # 舞台指示列表（含文本 + 穿插位置）
-dialogues: Dialogue[]               # 对白列表
+scene_num: int          # 场景序号（从 1 开始，跨章节递增）
+time: string | null     # 时间描述（如 "黄昏"、"深夜"）
+location: string | null # 地点描述（如 "城主府大厅"）
+characters: string[]    # 出场人物列表
+elements: Element[]     # 内容元素列表（按原文时间顺序排列）
 ```
 
-### 2.2.1 舞台指示（StageDirection）
+### 2.2.1 元素（Element）
+
+`elements` 是单一数组，包含两种类型的元素，按原文故事发展的时间顺序排列：
 
 ```yaml
-text: string       # 舞台指示文本（环境、动作、心理描写）
-position: int      # 插入位置：0=第一条对话前，1=第一条后/第二条前，以此类推
+# 舞台指示
+- type: "stage_direction"
+  text: string          # 舞台指示文本（环境、动作、心理描写）
+
+# 对白
+- type: "dialogue"
+  character: string     # 说话角色名
+  line: string          # 对白内容
+  parenthetical: string | null  # 演员指示（括号内表演指导）
 ```
 
-> **v3.0 变更**: `stage_directions` 从 `string[]` 改为 `StageDirection[]` 对象数组，支持按原著顺序将舞台指示穿插到对话之间，而非全部堆积在场景开头。
+> **v4.0 变更**: 将 `stage_directions` + `dialogues` 两个独立数组合并为单一 `elements` 数组，强制 AI 按原文时间顺序穿插输出。解决了 v3.0 `{text, position}` 方案中 AI 仍倾向将所有方向堆在 position:0 的问题。
 
 ### 2.3 对白（Dialogue）
 
@@ -67,13 +75,12 @@ parenthetical: string | null  # 演员指示（括号内的表演指导），如
 | `scenes[].time` | `string \| null` | ✓ | 时间 |
 | `scenes[].location` | `string \| null` | ✓ | 地点 |
 | `scenes[].characters` | `string[]` | ✓ | 出场人物 |
-| `scenes[].stage_directions` | `StageDirection[]` | ✓ | 舞台指示（v3.0: 对象数组，含 text + position） |
-| `scenes[].stage_directions[].text` | `string` | ✓ | 舞台指示文本 |
-| `scenes[].stage_directions[].position` | `int` | ✓ | 插入位置（0=第一条对话前） |
-| `scenes[].dialogues` | `Dialogue[]` | ✓ | 对白列表 |
-| `dialogues[].character` | `string` | ✓ | 说话角色名 |
-| `dialogues[].line` | `string` | ✓ | 对白内容 |
-| `dialogues[].parenthetical` | `string \| null` | ✓ | 演员指示 |
+| `scenes[].elements` | `Element[]` | ✓ | 内容元素列表（按原文顺序排列） |
+| `elements[].type` | `enum("stage_direction"\|"dialogue")` | ✓ | 元素类型 |
+| `elements[].text` | `string` | ✓ | 舞台指示文本（type=stage_direction 时） |
+| `elements[].character` | `string` | ✓ | 说话角色名（type=dialogue 时） |
+| `elements[].line` | `string` | ✓ | 对白内容（type=dialogue 时） |
+| `elements[].parenthetical` | `string \| null` | ✓ | 演员指示（type=dialogue 时） |
 
 ## 三、完整示例
 
@@ -98,16 +105,19 @@ chapters:
           - "萧炎"
           - "萧宁"
           - "萧战"
-        stage_directions:
-          - text: "演武场上尘土飞扬，数十名少年正在修炼"
-            position: 0
-          - text: "萧炎站在角落，手中的木剑无力地挥舞着"
-            position: 0
-        dialogues:
-          - character: "萧宁"
+        elements:
+          - type: "stage_direction"
+            text: "演武场上尘土飞扬，数十名少年正在修炼"
+          - type: "stage_direction"
+            text: "萧炎站在角落，手中的木剑无力地挥舞着"
+          - type: "dialogue"
+            character: "萧宁"
             line: "这不是我们萧家的'天才'吗？怎么连最基本的剑法都使不出来了？"
             parenthetical: "讥讽地"
-          - character: "萧炎"
+          - type: "stage_direction"
+            text: "萧炎猛地握紧拳头，指节发白"
+          - type: "dialogue"
+            character: "萧炎"
             line: "你……！"
             parenthetical: "握紧拳头"
       - scene_num: 2
@@ -116,16 +126,17 @@ chapters:
         characters:
           - "萧炎"
           - "药老"
-        stage_directions:
-          - text: "月光透过窗棂洒进房间，萧炎盘膝坐在床上"
-            position: 0
-          - text: "手指上的戒指突然发出一道微光"
-            position: 1
-        dialogues:
-          - character: "萧炎"
+        elements:
+          - type: "stage_direction"
+            text: "月光透过窗棂洒进房间，萧炎盘膝坐在床上"
+          - type: "dialogue"
+            character: "萧炎"
             line: "三年了……难道我真的就这样变成一个废人了吗？"
             parenthetical: "喃喃自语"
-          - character: "药老"
+          - type: "stage_direction"
+            text: "手指上的戒指突然发出一道微光"
+          - type: "dialogue"
+            character: "药老"
             line: "小家伙，别这么急着放弃。"
             parenthetical: "苍老的声音从戒指中传出"
 ```
@@ -161,30 +172,25 @@ chapters:
 - **人机可读**：人类阅读时不会被括号打断；机器处理时可直接判断 `if dialogue.parenthetical` 来添加格式
 - **国际化**：不同语言的剧本格式对演员指示的括号要求不同（中文用（），英文用 ( )），分离后可根据输出目标调整
 
-### 4.4 stage_directions 使用 {text, position} 对象数组
+### 4.4 使用单一 elements 数组而非分离的 stage_directions + dialogues
 
-**设计决策**：`stage_directions` 从 `string[]` 改为 `{text: string, position: int}[]` 对象数组。`position` 字段指定舞台指示在对话序列中的插入位置（0=第一条对话前，1=第一条对话后/第二条对话前，以此类推）。
+**设计决策**：v4.0 将 `stage_directions` 和 `dialogues` 两个独立数组合并为单一 `elements` 数组，按原文时间顺序排列。
 
 **原因**：
-- **精确穿插**：原著中舞台指示（动作描写、环境描写）通常发生在特定对话之间。例如原文在角色 A 说完后描写 B 的脸色变化，这个描写就应该出现在 A 的对话后、B 的对话前。简单的交替渲染（方向→对话→方向→对话）无法精准匹配这种复杂的穿插
-- **向后兼容**：旧格式的字符串数组被自动转换为 `{text, position: 0}`，已有数据不会报错
-- **批量操作保留**：依然可以一次性提取所有舞台指示（忽略 position），方便批量分析
-- **可组合性**：渲染器按 position 排序后穿插到对话之间：
+- **强制 AI 穿插**：LLM 天然倾向将同类元素分组输出。当方向和对话分别在两个数组中时，AI 几乎总是把所有方向堆在一起（即使加了 position 字段）。单一数组强制 AI 按原文顺序输出，自然实现了穿插
+- **简化渲染**：渲染器只需顺序遍历 elements，无需复杂的 position 计算
+- **向后兼容**：v2/v3 旧格式（分离的方向+对话）在解析时自动转换为 elements 格式
+- **可读性**：elements 数组直接反映了"先发生什么，后发生什么"的故事时间线
 
 ```python
-# 按 position 分组 → 穿插渲染
-dirs_by_pos = defaultdict(list)
-for d in stage_directions:
-    dirs_by_pos[d["position"]].append(d["text"])
-
-# position 0: 在第一条对话前
-for text in dirs_by_pos[0]:
-    print(text)
-# 交替输出第 i 条对话 → position i+1 的方向
-for i, dialogue in enumerate(dialogues):
-    print(f"{dialogue['character']}：{dialogue['line']}")
-    for text in dirs_by_pos[i + 1]:
-        print(text)
+# 渲染：顺序遍历 elements
+for elem in scene["elements"]:
+    if elem["type"] == "stage_direction":
+        print(f"【{elem['text']}】")
+    elif elem["type"] == "dialogue":
+        char, line = elem["character"], elem["line"]
+        paren = f"（{elem['parenthetical']}）" if elem.get("parenthetical") else ""
+        print(f"{char}：{paren}{line}")
 ```
 
 ### 4.5 Flat characters 列表
