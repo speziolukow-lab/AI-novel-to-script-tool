@@ -102,3 +102,32 @@ npm run dev                   # 启动 http://localhost:5173
 - **前端**：React 19 + TypeScript + TailwindCSS v4 + Vite
 - **AI**：DeepSeek（默认）/ Anthropic Claude / OpenAI GPT / 阿里通义千问（可切换）
 - **YAML**：PyYAML（结构化剧本序列化）
+
+## 依赖
+
+### 后端 (requirements.txt)
+
+| 包 | 版本 | 用途 |
+|----|------|------|
+| fastapi | 0.115 | Web 框架 |
+| uvicorn | 0.30 | ASGI 服务器 |
+| sqlalchemy | 2.0 | ORM 数据库操作 |
+| aiosqlite | 0.20 | 异步 SQLite 驱动 |
+| pydantic | 2.9 | 数据校验 & 配置 |
+| anthropic | 0.39 | Anthropic Claude API |
+| openai | ≥1.30 | OpenAI / DeepSeek / Qwen API |
+| pyyaml | 6.0 | YAML 序列化 |
+| python-docx | 1.1 | Word 文档生成 |
+| httpx | 0.27 | HTTP 客户端 |
+| python-multipart | 0.0 | 文件上传解析 |
+
+### 前端 (package.json)
+
+| 包 | 版本 | 用途 |
+|----|------|------|
+| react | ^19.2 | UI 框架 |
+| react-dom | ^19.2 | React DOM 渲染 |
+| typescript | ~6.0 | 类型系统 |
+| vite | ^8.0 | 构建工具 |
+| tailwindcss | ^4.3 | CSS 框架 |
+| @vitejs/plugin-react | ^6.0 | Vite React 插件 |
