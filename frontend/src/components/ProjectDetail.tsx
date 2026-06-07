@@ -246,12 +246,22 @@ export function ProjectDetail({ projectId, onBack }: Props) {
       const poll = setInterval(async () => {
         const p = await getProject(projectId);
         setProject(p);
-        if (p.status === "completed" || p.status === "failed" || p.status === "parsed") {
+        // Check selected chapters' adaptation status, not project status
+        const allDone = ids.every((cid) => {
+          const ch = p.chapters.find((c) => c.id === cid);
+          const status = ch?.adaptations?.[style]?.status ?? ch?.status;
+          return status === "completed" || status === "failed";
+        });
+        if (allDone) {
           clearInterval(poll);
           setAdapting(null);
           stopProgress();
           fetchProject();
-          if (p.status === "completed") toast(`✅ ${ids.length} 个章节改编完成！`);
+          const anyCompleted = ids.some((cid) => {
+            const ch = p.chapters.find((c) => c.id === cid);
+            return (ch?.adaptations?.[style]?.status ?? ch?.status) === "completed";
+          });
+          if (anyCompleted) toast(`✅ 批量改编完成！`);
         }
       }, 2000);
     } catch {
