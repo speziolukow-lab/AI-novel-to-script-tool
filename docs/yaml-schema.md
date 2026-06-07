@@ -51,15 +51,7 @@ elements: Element[]     # 内容元素列表（按原文时间顺序排列）
 
 > **v4.0 变更**: 将 `stage_directions` + `dialogues` 两个独立数组合并为单一 `elements` 数组，强制 AI 按原文时间顺序穿插输出。解决了 v3.0 `{text, position}` 方案中 AI 仍倾向将所有方向堆在 position:0 的问题。
 
-### 2.3 对白（Dialogue）
-
-```yaml
-character: string             # 说话角色名
-line: string                  # 对白内容
-parenthetical: string | null  # 演员指示（括号内的表演指导），如 "冷冷地"、"笑"
-```
-
-### 2.4 完整类型定义
+### 2.3 完整类型定义
 
 | 字段路径 | 类型 | 必填 | 说明 |
 |----------|------|------|------|
@@ -229,7 +221,7 @@ for elem in scene["elements"]:
 
 ### 6.1 版本号管理
 
-`Adaptation.scenes.version` 字段当前为 `2`（v2: 引入 structured_scenes；v3.0: stage_directions 改为对象数组），未来 Schema 变更时递增版本号，确保向后兼容。
+`Adaptation.scenes.version` 字段当前为 `2`（v2: 引入 structured_scenes；v3.0: stage_directions 改为对象数组；v4.0: 合并为单一 elements 数组），未来 Schema 变更时递增版本号，确保向后兼容。
 
 ### 6.2 预留字段
 
