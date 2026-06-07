@@ -491,19 +491,6 @@ export function ProjectDetail({ projectId, onBack }: Props) {
           ))}
         </div>
 
-        {/* Extract characters */}
-        <button
-          className="btn-adapt-all"
-          onClick={handleExtractCharacters}
-          disabled={extractingChars}
-          style={{
-            background: extractingChars ? "#cbd5e1" : "#8b5cf6",
-            border: extractingChars ? "1px solid #cbd5e1" : "1px solid #7c3aed",
-          }}
-        >
-          {extractingChars ? "⏳ 提取中..." : "🎭 生成角色档案"}
-        </button>
-
         {/* F5: Batch adapt */}
         <button
           className="btn-adapt-all"
@@ -706,6 +693,20 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                   ) : activeAdaptation.status === "failed" ? (
                     <span className="adapt-status failed">❌ 改编失败</span>
                   ) : null}
+                  {/* Extract characters button */}
+                  {!editMode && (
+                    <button
+                      className="btn-adapt-one"
+                      onClick={handleExtractCharacters}
+                      disabled={extractingChars}
+                      style={{
+                        background: extractingChars ? "#cbd5e1" : "#8b5cf6",
+                        borderColor: extractingChars ? "#cbd5e1" : "#7c3aed",
+                      }}
+                    >
+                      {extractingChars ? "⏳ 提取中..." : "🎭 角色档案"}
+                    </button>
+                  )}
                   {/* Always show adapt button unless adapting this specific chapter */}
                   {adapting !== activeChapter.id && !editMode && (
                     <button
@@ -956,7 +957,7 @@ export function ProjectDetail({ projectId, onBack }: Props) {
                 <p style={{ fontSize: "32px", marginBottom: "8px" }}>🎭</p>
                 <p>尚未生成角色档案</p>
                 <p style={{ fontSize: "11px", marginTop: "4px" }}>
-                  点击顶部「生成角色档案」按钮
+                  点击上方「🎭 角色档案」按钮
                   <br />
                   AI 将自动提取全本人物信息
                 </p>
